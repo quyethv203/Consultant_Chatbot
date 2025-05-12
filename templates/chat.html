@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Chatbot HUCE{% endblock %}
+
+{% block head %}
+{{ super() }}
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container chat-container mt-4">
+    <h2 class="mb-3">Cuộc trò chuyện</h2>
+    <div id="chatbox">
+
+        {% for message in chat_history %}
+        <div class="message {% if message.sender_type == 'user' %}user-message{% else %}bot-message{% endif %}">
+            {{ message.content }}
+            <span class="timestamp timestamp-raw" data-timestamp="{{ message.timestamp.isoformat() }}"></span>
+        </div>
+        {% endfor %}
+    </div>
+    <div id="input-area">
+        <input type="text" name="user_input" id="user-input" placeholder="Nhập tin nhắn của bạn..." required>
+        <button id="send-button">Gửi</button>
+    </div>
+    <button id="new-chat-button">Bắt đầu cuộc trò chuyện mới</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const chatbox = document.getElementById('chatbox');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const newChatButton = document.getElementById('new-chat-button');
+
+
+        function formatTime(date) {
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+
+        function addMessage(sender, text, timestamp = new Date()) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            if (sender === 'user') {
+                messageElement.classList.add('user-message');
+            } else if (sender === 'bot') {
+                messageElement.classList.add('bot-message');
+            }
+            messageElement.textContent = text;
+
+            const timestampElement = document.createElement('span');
+            timestampElement.classList.add('timestamp');
+
+            let displayTime;
+
+
+            if (typeof timestamp === 'string') {
+                displayTime = new Date(timestamp);
+            } else if (timestamp instanceof Date) {
+                displayTime = timestamp;
+            } else {
+                displayTime = new Date();
+            }
+            timestampElement.textContent = formatTime(displayTime);
+            messageElement.appendChild(timestampElement);
+            chatbox.appendChild(messageElement);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+        function formatHistoryTimestamps() {
+            const timestampElements = document.querySelectorAll('.timestamp-raw');
+            timestampElements.forEach(span => {
+                const rawTimestamp = span.dataset.timestamp;
+                try {
+                    const dateObj = new Date(rawTimestamp);
+
+
+                    if (!isNaN(dateObj.getTime())) {
+
+
+                        const timezoneOffsetMillis = 7 * 60 * 60 * 1000;
+
+                        dateObj.setTime(dateObj.getTime() + timezoneOffsetMillis);
+
+
+                        const hours = dateObj.getHours().toString().padStart(2, '0');
+                        const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+                        span.textContent = `${hours}:${minutes}`;
+
+
+                        span.classList.remove('timestamp-raw');
+
+                    } else {
+                        console.error("Invalid timestamp string for history:", rawTimestamp);
+                        span.textContent = "Invalid Date";
+                    }
+                } catch (e) {
+                    console.error("Error processing history timestamp:", rawTimestamp, e);
+                    span.textContent = "Error Date";
+                }
+            });
+
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+
+        async function sendMessage() {
+            const messageText = userInput.value.trim();
+            if (messageText === '') {
+                return;
+            }
+
+            addMessage('user', messageText, new Date());
+            userInput.value = '';
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            newChatButton.disabled = true;
+            sendButton.textContent = 'Đang xử lý...';
+            try {
+                const response = await fetch('{{ url_for("chat.send_message") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({user_input: messageText})
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({error: 'Phản hồi lỗi từ máy chủ.'}));
+                    const errorMessage = errorData.error || `Lỗi từ máy chủ (Status: ${response.status}).`;
+                    console.error('Backend error:', response.status, errorMessage);
+
+                    addMessage('bot', 'Có lỗi xảy ra khi xử lý tin nhắn của bạn: ' + errorMessage, new Date());
+                    if (response.status === 500 && (!errorData || !errorData.error)) {
+                        addMessage('bot', 'Đã xảy ra lỗi server nội bộ. Vui lòng thử lại sau.', new Date());
+                    }
+                    return;
+                }
+                const data = await response.json();
+                const botResponseText = data.bot_response;
+
+
+                addMessage('bot', botResponseText, new Date());
+
+            } catch (error) {
+                console.error('AJAX error:', error);
+
+                addMessage('bot', 'Lỗi kết nối: Không thể gửi tin nhắn.', new Date());
+            } finally {
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                newChatButton.disabled = false;
+                sendButton.textContent = 'Gửi';
+                userInput.focus();
+            }
+        }
+
+        async function startNewSession() {
+            if (!confirm("Bạn có chắc chắn muốn bắt đầu cuộc trò chuyện mới không?")) {
+                return;
+            }
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            newChatButton.disabled = true;
+            newChatButton.textContent = 'Đang tạo phiên mới...';
+
+            try {
+                const response = await fetch('{{ url_for("chat.new_session") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({error: 'Phản hồi lỗi khi tạo phiên mới.'}));
+                    const errorMessage = errorData.error || `Lỗi tạo phiên mới (Status: ${response.status}).`;
+                    console.error('Backend error:', response.status, errorMessage);
+                    alert('Có lỗi xảy ra khi tạo phiên chat mới: ' + errorMessage);
+                    return;
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    console.log('Phiên chat mới đã được tạo:', data.session_id);
+                    alert('Phiên chat mới đã được tạo!');
+
+                    chatbox.innerHTML = '';
+
+                    addMessage('bot', 'Xin chào! Tôi là Chatbot Cung Hoàng Đạo. Bạn muốn hỏi gì về 12 cung hoàng đạo?', new Date());
+                } else {
+                    alert('Không thể tạo phiên chat mới: ' + (data.error || 'Lỗi không xác định.'));
+                }
+            } catch (error) {
+                console.error('AJAX error creating new session:', error);
+                alert('Không thể kết nối để tạo phiên chat mới.');
+            } finally {
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                newChatButton.disabled = false;
+                newChatButton.textContent = 'Bắt đầu cuộc trò chuyện mới';
+                userInput.focus();
+            }
+        }
+
+
+        formatHistoryTimestamps();
+
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+        newChatButton.addEventListener('click', startNewSession);
+
+
+        userInput.focus();
+
+
+    });
+
+
+    function scrollToBottom() {
+        const chatbox = document.getElementById('chatbox');
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+</script>
+{% endblock %}

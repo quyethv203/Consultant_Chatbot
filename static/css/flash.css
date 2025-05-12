@@ -1,0 +1,87 @@
+/* --- STYLE CHO FLASH MESSAGES --- */
+.content-wrapper {
+    width: 450px; /* Đặt chiều rộng tương đương chiều rộng form của bạn */
+    margin: 40px auto; /* Căn giữa khối này theo chiều ngang và tạo khoảng trống trên/dưới */
+    box-sizing: border-box; /* Đảm bảo padding được tính vào width */
+    text-align: center; /* <--- QUAN TRỌNG: Căn chỉnh nội dung bên trong (flashes, form) sang lề trái */
+}
+/* Style chung cho danh sách các thông báo */
+.flashes {
+    list-style: none; /* Bỏ dấu chấm đầu dòng của list */
+    padding: 0; /* Bỏ padding mặc định của list */
+    margin: 15px 0; /* Tạo khoảng trống trên và dưới danh sách thông báo */
+    box-sizing: border-box; /* Tính cả padding và border vào width */
+    display: inline-block;
+}
+
+/* Style chung cho từng thông báo (từng thẻ li) */
+.flashes li {
+    padding: 12px 20px; /* Khoảng trống bên trong thông báo */
+    margin-bottom: 10px; /* Khoảng trống giữa các thông báo */
+    border-radius: 5px; /* Bo tròn góc */
+    font-size: 0.95rem; /* Cỡ chữ */
+    font-weight: 500; /* Độ đậm chữ */
+    text-align: left; /* Căn lề trái */
+    border: 1px solid transparent; /* Border mặc định (trong suốt) */
+    opacity: 0.95; /* Hơi trong suốt một chút */
+    word-break: break-word; /* Ngắt dòng nếu thông báo quá dài */
+    opacity: 1; /* Bắt đầu với độ mờ đầy đủ (hiện rõ) */
+    max-height: 1000px; /* Đặt chiều cao tối đa lớn hơn nội dung để có thể thu gọn */
+    overflow: hidden; /* Ẩn nội dung tràn ra trong quá trình thu gọn chiều cao */
+    /* margin-bottom: 10px; <-- Giữ lại margin-bottom từ style trước nếu có */
+
+    /* Định nghĩa hiệu ứng chuyển đổi */
+    /* Áp dụng transition cho opacity, max-height và margin-bottom */
+    transition: opacity 0.5s ease-out, max-height 0.5s ease-out, margin-bottom 0.5s ease-out, padding 0.5s ease-out; /* Thời gian hiệu ứng 0.5s */
+}
+
+/* Style riêng cho từng loại thông báo dựa vào class */
+
+/* Thông báo thành công (success) */
+.flashes li.success {
+    background-color: #d4edda; /* Nền màu xanh lá nhạt */
+    color: #155724; /* Chữ màu xanh lá đậm */
+    border-color: #c3e6cb; /* Viền màu xanh lá */
+}
+
+/* Thông báo lỗi (danger) */
+.flashes li.danger {
+    background-color: #f8d7da; /* Nền màu đỏ nhạt */
+    color: #721c24; /* Chữ màu đỏ đậm */
+    border-color: #f5c6cb; /* Viền màu đỏ */
+}
+
+/* Thông báo cảnh báo (warning) */
+.flashes li.warning {
+    background-color: #fff3cd; /* Nền màu vàng nhạt */
+    color: #856404; /* Chữ màu vàng đậm */
+    border-color: #ffeeba; /* Viền màu vàng */
+}
+
+/* Thông báo thông tin (info) */
+.flashes li.info {
+    background-color: #d1ecf1; /* Nền màu xanh dương nhạt */
+    color: #0c5460; /* Chữ màu xanh dương đậm */
+    border-color: #bee5eb; /* Viền màu xanh dương */
+}
+
+/* Tùy chọn: Thêm bóng đổ nhẹ cho nổi bật */
+.flashes li {
+     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Tùy chọn: Hiệu ứng khi hover (di chuột qua) */
+.flashes li:hover {
+    opacity: 1; /* Hiện rõ hơn khi hover */
+}
+
+.flashes li.hide {
+    opacity: 0; /* Ẩn dần */
+    max-height: 0; /* Thu gọn chiều cao về 0 */
+    margin-bottom: 0; /* Bỏ khoảng trống dưới khi ẩn */
+    padding-top: 0; /* Bỏ padding trên */
+    padding-bottom: 0; /* Bỏ padding dưới */
+    /* Tùy chọn: visibility: hidden; sau khi ẩn để đảm bảo không tương tác */
+}
+
+/* --- KẾT THÚC STYLE CHO FLASH MESSAGES --- */

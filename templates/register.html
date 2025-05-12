@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký - Chatbot Cung Hoàng Đạo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/flash.css') }}">
+</head>
+<body>
+<div class="content-wrapper">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <ul class="flashes">
+        {% for category, message in messages %}
+        <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+    <form class="form" method="POST" action="{{ url_for('user.register') }}">
+        <p class="title">Register </p>
+        <p class="message">Signup now and get full access to our app. </p>
+        <label>
+
+            <input required="" placeholder="" type="text" class="input" name="username"
+                   value="{{ username if username is defined and username is not none else '' }}">
+            <span>Username</span>
+        </label>
+
+        <label>
+
+            <input required="" placeholder="" type="email" class="input" name="email"
+                   value="{{ email if email is defined and email is not none else '' }}">
+            <span>Email</span>
+        </label>
+
+        <label>
+            <input required="" placeholder="" type="password" class="input" name="password" required>
+            <span>Password</span>
+        </label>
+        <label>
+
+            <input required="" placeholder="" type="password" class="input" name="confirm_password" required>
+            <span>Confirm password</span>
+        </label>
+
+        <button class="submit" type="submit">Sign Up</button>
+        <p class="signin">Already have an acount ? <a rel="noopener noreferrer" href="{{ url_for('user.login') }}"
+                                                      class="">Sign in</a>
+    </form>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const flashMessages = document.querySelectorAll('.flashes li');
+        flashMessages.forEach(function (message) {
+            const autoHideDuration = 5000; // Thời gian hiển thị (ms)
+            setTimeout(function () {
+                message.classList.add('hide');
+                message.addEventListener('transitionend', function () {
+                    message.remove();
+                }, {once: true});
+            }, autoHideDuration);
+        });
+    });
+</script>
+</body>
+</html>

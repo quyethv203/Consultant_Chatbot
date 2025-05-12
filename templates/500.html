@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Lỗi Server Nội Bộ{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>500 - Lỗi Server Nội Bộ</h1>
+    <p>Đã xảy ra lỗi không mong muốn trên server. Vui lòng thử lại sau.</p>
+    <p>Nếu vấn đề tiếp diễn, vui lòng liên hệ quản trị viên.</p>
+    <p><a href="{{ url_for('chat.index') }}">Quay về trang Chat</a></p>
+</div>
+{% endblock %}
