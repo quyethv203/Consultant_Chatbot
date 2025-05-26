@@ -2,7 +2,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -59,7 +58,6 @@ def init_db():
         Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("Database tables created or already exist.")
     except Exception as e:
-
         logger.error(f"Lỗi trong quá trình Base.metadata.create_all: {e}", exc_info=True)
 
     logger.debug("Kết thúc hàm init_db.")

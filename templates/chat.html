@@ -86,7 +86,7 @@
         const closeModal = document.querySelector('.close');
 
         // Check if user is guest
-        const isGuest = {% if (is_guest is defined and is_guest) %}true{% else %}false{% endif %};
+        const isGuest = {% if is_guest is defined and is_guest %}true{% else %}false{% endif %};
 
         // Load chatbot info on page load
         loadChatbotInfo();

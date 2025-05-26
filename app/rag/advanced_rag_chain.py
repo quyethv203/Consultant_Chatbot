@@ -376,7 +376,7 @@ class AdvancedRAGChain:
             return f"Xin lỗi, đã xảy ra lỗi khi xử lý câu hỏi của bạn. Vui lòng thử lại hoặc diễn đạt câu hỏi khác. Lỗi: {str(e)}"
 
 
-    # Factory function để tạo Advanced RAG Chain
+# Factory function để tạo Advanced RAG Chain
 def get_advanced_rag_chain() -> AdvancedRAGChain:
     """Tạo và trả về Advanced RAG Chain instance"""
     try:

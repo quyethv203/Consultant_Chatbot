@@ -13,8 +13,6 @@ from app.services.chatbot_service import ChatbotService
 
 from app.core.database import SessionLocal
 
-from app.nlp.nlp_model import NLPModel
-from app.nlp.response_generator import ResponseGenerator
 
 print(f"DEBUG_DEPENDENCIES: Giá trị của SessionLocal sau khi import từ database.py (module level): {SessionLocal}")
 print("DEBUG_DEPENDENCIES: Đã load module app/core/dependencies.py.")
@@ -105,30 +103,6 @@ def config(binder):
         print(
             f"DEBUG_DEPENDENCIES: Lỗi khi bind ChatService bằng Provider: {e}. Kiểm tra lại lớp ChatService và dependency. Bind ChatService với None.")
         binder.bind(ChatService, None)
-
-    print("DEBUG_DEPENDENCIES: Đang cố gắng bind NLPModel (trực tiếp instance).")
-    try:
-
-        binder.bind(NLPModel, NLPModel())
-        print("DEBUG_DEPENDENCIES: Đã bind NLPModel (trực tiếp instance).")
-    except NameError:
-        print("DEBUG_DEPENDENCIES: Cảnh báo: Không tìm thấy NLPModel. Không bind NLPModel.")
-    except Exception as e:
-        print(
-            f"DEBUG_DEPENDENCIES: Lỗi khi bind NLPModel (trực tiếp instance): {e}. Kiểm tra lại __init__ của NLPModel. Bind NLPModel với None.")
-        binder.bind(NLPModel, None)
-
-    print("DEBUG_DEPENDENCIES: Đang cố gắng bind ResponseGenerator (trực tiếp instance).")
-    try:
-
-        binder.bind(ResponseGenerator, ResponseGenerator())
-        print("DEBUG_DEPENDENCIES: Đã bind ResponseGenerator (trực tiếp instance).")
-    except NameError:
-        print("DEBUG_DEPENDENCIES: Cảnh báo: Không tìm thấy ResponseGenerator. Không bind ResponseGenerator.")
-    except Exception as e:
-        print(
-            f"DEBUG_DEPENDENCIES: Lỗi khi bind ResponseGenerator (trực tiếp instance): {e}. Kiểm tra lại __init__ of ResponseGenerator. Bind ResponseGenerator with None.")
-        binder.bind(ResponseGenerator, None)
 
     print("DEBUG_DEPENDENCIES: Đang cố gắng bind ChatbotService (trực tiếp instance).")
     try:
