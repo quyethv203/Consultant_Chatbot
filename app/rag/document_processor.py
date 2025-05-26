@@ -5,380 +5,393 @@ print("--- DEBUG TEST: FILE app/rag/document_processor.py DANG DUOC THUC THI ---
 # --- END DEBUG TEST ---
 
 import os
-import random  # Import thu vien random
+import random
+import re
+import time
+from typing import List
 
-import pytesseract  # Wrapper Python cho Tesseract OCR
-# Import text splitter. Kiem tra lai import path nay tuy phien ban LangChain da cai
-# Tu langchain.text_splitter hoac langchain_community.text_splitter
-from langchain.text_splitter import RecursiveCharacterTextSplitter  # De chia van ban thanh cac phan nho (chunks)
-from langchain_community.vectorstores import Chroma  # De luu tru va tim kiem vector
-from langchain_core.documents import Document  # Import Document de lam viec voi ket qua retrieve
+# <-- IMPORT CHROMA CLIENT TRUC TIEP THAY VI LANGCHAIN WRAPPER -->
+import chromadb
+from chromadb.api.models.Collection import Collection
+# Import cac component tu LangChain de xu ly document
+from langchain_core.documents import Document
 # Import embedding model
-# <-- SU DUNG HuggingFaceEmbeddings THAY VI SentenceTransformerEmbeddings -->
-# Dam bao da cai dat langchain-huggingface, transformers va torch
-from langchain_huggingface import HuggingFaceEmbeddings  # Import HuggingFaceEmbeddings
-# Import cac thu vien cho OCR
-from pdf2image import convert_from_path  # De chuyen PDF sang anh
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Import Config de lay duong dan file va ten model, chunk size/overlap
 from app.core.config import Config
+# <-- IMPORT CAC FACTORY VA STRATEGY MOI -->
+from app.rag.document_loaders_factory import get_document_loader_factory
+from app.rag.text_splitting_strategies import TextSplitterContext, StructuredTextSplitterStrategy, \
+    UnstructuredTextSplitterStrategy
 
-# Import cac component tu LangChain de xu ly document va tao embeddings/vectorstore
-# Import PyPDFLoader (van can de load cau truc trang)
+# Import pytesseract va Pillow
+try:
+    import pytesseract
+    from PIL import Image
+    import fitz  # PyMuPDF
 
-# --- Cau hinh duong dan den Tesseract executable ---
-# Ban can thay the duong dan nay bang duong dan thuc te den tesseract.exe tren may cua ban
-# Vi du tren Windows: r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-# Vi du tren Linux/macOS: co the khong can dong nay neu tesseract nam trong PATH
-# Kiem tra xem Config co TESSERACT_PATH khong, neu khong thi dat mac dinh hoac bao loi
-if hasattr(Config, 'TESSERACT_PATH') and Config.TESSERACT_PATH:
+    # Cấu hình đường dẫn Tesseract CLI trực tiếp cho pytesseract
+    # Đảm bảo đường dẫn này chính xác trên hệ thống của bạn
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    PYTESSERACT_AVAILABLE = True
+except ImportError as e:
+    print(f"WARNING: Khong the import cac thu vien can thiet cho xu ly PDF voi pytesseract: {e}")
+    print("Dam bao da cai dat: pip install pytesseract Pillow PyMuPDF")
+    PYTESSERACT_AVAILABLE = False
+except Exception as e:
+    print(f"WARNING: Loi khi cau hinh pytesseract.pytesseract.tesseract_cmd: {e}")
+    print("Dam bao duong dan Tesseract CLI la chinh xac.")
+    PYTESSERACT_AVAILABLE = False
+
+print(f"--- DEBUG TEST: PYTESSERACT_AVAILABLE = {PYTESSERACT_AVAILABLE} ---")
+
+
+def load_and_process_pdf_with_pytesseract(file_path: str) -> List[Document]:
+    """
+    Loads a PDF, converts each page to an image, and extracts text using pytesseract.
+    Returns a list of Documents, where each Document corresponds to the text of a page.
+    """
+    print(f"--- Dang xu ly file PDF: {file_path} bang PyMuPDF va pytesseract ---")
+    if not PYTESSERACT_AVAILABLE:
+        print(
+            "Loi: pytesseract, Pillow hoac PyMuPDF chua duoc cai dat hoac cau hinh sai. Khong the xu ly PDF theo cach nay.")
+        return []
+
+    processed_documents = []
     try:
-        pytesseract.pytesseract.tesseract_cmd = Config.TESSERACT_PATH
-        print(f"Da cau hinh duong dan Tesseract: {Config.TESSERACT_PATH}")
+        doc = fitz.open(file_path)
+        for i in range(doc.page_count):
+            page = doc.load_page(i)
+            # Render trang PDF thanh hinh anh
+            pix = page.get_pixmap()
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+            print(f"--- Dang OCR trang {i + 1}/{doc.page_count} cua PDF ---")
+            try:
+                # Chay OCR tren hinh anh
+                text = pytesseract.image_to_string(img, lang='vie', config='--oem 1')
+
+                # Loại bỏ các ký tự không mong muốn và khoảng trắng thừa
+                text = re.sub(r'\s+', ' ', text).strip()
+
+                if text:
+                    metadata = {
+                        "source_file": os.path.basename(file_path),
+                        "original_type": ".pdf",
+                        "page_number": i + 1,
+                        "file_path": file_path  # Giữ lại đường dẫn đầy đủ
+                    }
+                    processed_documents.append(Document(page_content=text, metadata=metadata))
+                else:
+                    print(f"Warning: Trang {i + 1} cua PDF khong co van ban sau OCR.")
+
+            except Exception as e:
+                print(f"ERROR: Loi OCR trang {i + 1} cua PDF: {e}")
+
+        if not processed_documents:
+            print(f"WARNING: Khong co van ban nao duoc trich xuat tu file PDF '{file_path}'.")
+        return processed_documents
+
     except Exception as e:
-        print(f"ERROR: Khong the cau hinh duong dan Tesseract '{Config.TESSERACT_PATH}': {e}")
-        print("Vui long kiem tra lai duong dan TESSERACT_PATH trong config.py.")
-        # Tiep tuc chay, pytesseract se thu tim trong PATH he thong
-else:
-    # Neu khong co TESSERACT_PATH trong config, pytesseract se thu tim trong PATH
-    # In canh bao neu khong tim thay trong config
-    print("WARNING: Config.TESSERACT_PATH khong duoc thiet lap trong config.py.")
-    print("pytesseract se thu tim Tesseract trong PATH he thong.")
-    print(
-        "Neu gap loi 'TesseractNotFound', vui long cai dat Tesseract OCR engine va thiet lap bien moi truong PATH hoac Config.TESSERACT_PATH.")
+        print(f"ERROR: Loi khi tai va xu ly PDF voi PyMuPDF va pytesseract: {e}")
+        return []
 
 
 # --- Ham helper de lay Embedding Model ---
-# Ham nay duoc goi tu process_document_pipeline va tu VectorStoreManager
 def get_embedding_model():
     """
     Khoi tao va cau hinh Embedding Model.
     """
-    print("\n--- Dang khoi tao Embedding Model (get_embedding_model) ---") # <-- Them print dau ham
-    # Check xem Config.SENTENCE_TRANSFORMER_MODEL_NAME da co chua
+    print("\n--- Dang khoi tao Embedding Model (get_embedding_model) ---")
     if not hasattr(Config, 'SENTENCE_TRANSFORMER_MODEL_NAME') or not Config.SENTENCE_TRANSFORMER_MODEL_NAME:
-        print("ERROR: Config.SENTENCE_TRANSFORMER_MODEL_NAME khong duoc tim thay.") # <-- Print loi
+        print("ERROR: Config.SENTENCE_TRANSFORMER_MODEL_NAME khong duoc tim thay.")
         print("Dam bao SENTENCE_TRANSFORMER_MODEL_NAME duoc dinh nghia trong config.py.")
-        print("get_embedding_model hoan tat, tra ve None.") # <-- Them print
+        print("get_embedding_model hoan tat, tra ve None.")
         return None
 
-    model_name = Config.SENTENCE_TRANSFORMER_MODEL_NAME # Lay ten model tu config
-    print(f"Dang khoi tao HuggingFaceEmbeddings voi model: '{model_name}'") # <-- SUA PRINT
+    model_name = Config.SENTENCE_TRANSFORMER_MODEL_NAME
+    print(f"Dang khoi tao HuggingFaceEmbeddings voi model: '{model_name}'")
 
     try:
-        # Khoi tao HuggingFaceEmbeddings voi ten model tu config
-        # model_kwargs co the dung de cau hinh device (cpu/cuda)
-        # encode_kwargs co the dung de cau hinh pooling
-        embeddings = HuggingFaceEmbeddings(model_name=model_name, model_kwargs={'device': 'cpu'}) # Mac dinh dung CPU
-        print(f"Da khoi tao HuggingFaceEmbeddings voi model '{model_name}' thanh cong.") # <-- SUA PRINT
-        print("get_embedding_model hoan tat, tra ve Embedding Model.") # <-- Them print
-        return embeddings # Tra ve instance model da khoi tao
+        embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
+        print(f"Da khoi tao HuggingFaceEmbeddings voi model '{model_name}' thanh cong.")
+        print("get_embedding_model hoan tat, tra ve Embedding Model.")
+        return embeddings
 
-    # <-- SUA CACH BAT NGOAI LE -->
-    except Exception as e: # Bat bat ky loi nao xay ra trong qua trinh khoi tao/tai model
-        print(
-            f"ERROR: Loi khi khoi tao HuggingFaceEmbeddings voi model '{model_name}': {e}")  # <-- SUA PRINT VA IN RA THONG TIN LOI CU THE
+    except Exception as e:
+        print(f"ERROR: Loi khi khoi tao HuggingFaceEmbeddings voi model '{model_name}': {e}")
         print("Dam bao da cai dat thu vien langchain-huggingface, transformers va torch.")
         print("Kiem tra ket noi mang va ten model co chinh xac khong tren Hugging Face Hub.")
-        print("get_embedding_model hoan tat, tra ve None do loi.") # <-- Them print
-        return None # Tra ve None neu co loi
+        print("get_embedding_model hoan tat, tra ve None do loi.")
+        return None
 
 
-# --- Ham thuc hien OCR tren file PDF ---
-def perform_ocr_on_pdf(file_path: str) -> str | None:
-    print(f"\n--- Dang thuc hien OCR tren file: {file_path} ---")  # <-- Them print
-    full_text = ""  # Bien luu tru toan bo van ban sau OCR
-    try:
-        if not os.path.exists(file_path):
-            print(f"ERROR: File tai lieu khong ton tai de thuc hien OCR: {file_path}")  # <-- Print loi
-            print("perform_ocr_on_pdf hoan tat, tra ve None.")  # <-- Them print
-            return None  # Tra ve None neu file khong ton tai
-
-        # Chuyen doi tung trang PDF sang anh
-        print("Dang chuyen doi cac trang PDF sang anh...")  # <-- Them print
-        # DPI 300 thuong cho ket qua OCR tot hon 200 mac dinh
-        images = convert_from_path(file_path, dpi=300)
-
-        print(f"Da chuyen doi thanh cong {len(images)} trang sang anh. Dang thuc hien OCR...")  # <-- Them print
-
-        # Thuc hien OCR tren tung anh va ghep noi dung
-        for i, image in enumerate(images):
-            print(f"Dang thuc hien OCR cho trang {i + 1}/{len(images)}...")  # <-- Them print
-            # Su dung pytesseract de lay text tu anh
-            # lang='vie' de su dung ngon ngu Tieng Viet (can cai dat data ngon ngu cho Tesseract)
-            # config='--psm 6' (Page Segmentation Mode) co the giup cai thien ket qua tuy loai tai lieu
-            try:
-                # Them timeout de tranh bi treo neu trang bi loi
-                text = pytesseract.image_to_string(image, lang='vie', timeout=15)  # Thuc hien OCR
-                full_text += text + "\n\n--- Trang Ket Thuc ---\n\n"  # Them text cua trang va dau phan cach ro rang
-                print(f"OCR trang {i + 1} hoan tat. Trich xuat duoc {len(text)} ky tu.")  # <-- Them print
-            except Exception as e:
-                print(f"WARNING: Loi khi thuc hien OCR cho trang {i + 1}: {e}")  # <-- IN RA LOI CU THE nhung tiep tuc
-                full_text += f"\n\n--- Loi OCR Trang {i + 1} ---\n\n"  # Them dau hieu loi
-
-        print(f"OCR tren toan bo file hoan tat. Tong so ky tu trich xuat: {len(full_text)}")  # <-- Them print
-        print("perform_ocr_on_pdf hoan tat, tra ve toan bo van ban sau OCR.")  # <-- Them print
-        return full_text  # Tra ve toan bo van ban sau OCR
-
-    # <-- SUA CACH BAT NGOAI LE -->
-    except Exception as e:  # Bat bat ky loi nao xay ra trong qua trinh OCR
-        print(f"ERROR: Loi xay ra trong qua trinh OCR tren file {file_path}: {e}")  # <-- IN RA LOI CU THE
-        print("perform_ocr_on_pdf hoan tat, tra ve None do loi.")  # <-- Them print
-        return None  # Tra ve None neu co loi nghiem trong
-
-
-# --- Ham chia van ban thanh cac chunk nho (nhan vao string) ---
-# <-- SUA HAM split_document DE NHAN VAO STRING VA DEBUG -->
-def split_document_text(text: str) -> list[Document] | None:
-    print("\n--- Dang chia van ban (string) thanh cac chunk (split_document_text) ---")  # <-- Them print dau ham
-    if not text or not text.strip():  # Kiem tra text co rong hoac chi chua khoang trang khong
-        print("WARNING: Van ban dau vao rong hoac chi chua khoang trang. Khong the chia chunk.")  # <-- Print canh bao
-        print("split_document_text hoan tat, tra ve danh sach chunk rong.")  # <-- Them print
-        return []  # Tra ve danh sach rong neu text rong
-
-    # Debug: In ra mot phan noi dung cua text dau vao
-    print(f"Do dai van ban dau vao: {len(text)}")  # <-- Them print
-    # In ra noi dung 2000 ky tu dau tien cua text dau vao
-    print(f"Noi dung 2000 ky tu dau tien cua van ban dau vao:\n---\n{text[:2000]}\n---") # <-- Tang len 2000 ky tu
-
-
-    # Dam bao Config.CHUNK_SIZE va Config.CHUNK_OVERLAP duoc dinh nghia trong config.py
-    chunk_size = Config.CHUNK_SIZE
-    chunk_overlap = Config.CHUNK_OVERLAP
-    print(
-        f"Dang chia van ban thanh cac chunk voi kich thuoc {chunk_size} va overlap {chunk_overlap}...")  # <-- Them print
-
-    # Dinh nghia separators (co thể đặt bên trong hàm nếu chỉ dùng ở đây)
-    # <-- SU DUNG SEPARATORS KET HOP CAU TRUC VA DON GIAN -->
-    structure_and_simple_separators = [
-        r'\nChương\s+[IVXLCDM\d]+\s*[\.:]', # Nhan dien "Chuong I", "Chuong II", "Chuong 1", ...
-        r'\nĐiều\s+\d+\s*[\.]?',          # Nhan dien "Dieu 1.", "Dieu 2", ...
-        "\n\n",                           # Chia theo doan rong
-        "\n",                             # Chia theo dong moi
-        " ",                              # Chia theo khoang trang
-        "",                               # Chia theo ky tu (khi khong con cach nao khac)
-    ]
-
-
-    try:
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,  # Doc tu config
-            chunk_overlap=chunk_overlap,  # Doc tu config
-            separators=structure_and_simple_separators,  # <-- SU DUNG SEPARATORS KET HOP
-            length_function=len,  # Mac dinh la len
-            is_separator_regex=True # <-- DAT LA TRUE VI DUNG REGEX
-        )
-        # Chia van ban (string) thanh cac text chunk
-        # split_text tra ve list of strings
-        string_chunks = text_splitter.split_text(text)  # <-- SU DUNG split_text cho string
-
-        # Chuyen doi cac string chunks thanh Document objects
-        # Giu lai metadata tu document goc neu can (can truyen documents goc vao day)
-        # Tam thoi chi tao Document tu string, metadata co the bo sung sau
-        chunks = [Document(page_content=chunk) for chunk in string_chunks]  # <-- Tao Document tu string chunks
-
-        print(f"Da chia thanh cong {len(chunks)} chunk.")  # <-- Them print
-        print("split_document_text hoan tat, tra ve danh sach chunks (Document objects).")  # <-- Them print
-
-        # Debug: In ra mot phan noi dung cua cac chunk vua tao (neu co)
-        if chunks:
-            print("\n--- DEBUG TEST: NOI DUNG CUA MOT VAI CHUNK DA TAO ---") # <-- Them print
-            # In ra noi dung 500 ky tu dau tien cua chunk dau tien va chunk cuoi cung
-            if hasattr(chunks[0], 'page_content'):
-                 print(f"--- Chunk dau tien (do dai: {len(chunks[0].page_content)}) ---") # <-- Them do dai
-                 print(f"Noi dung (500 ky tu dau): {chunks[0].page_content[:500]}...") # <-- Them ...
-                 print("---------------------")
-            else:
-                 print("WARNING: Chunk dau tien khong co thuoc tinh 'page_content'.") # <-- Them print
-
-            if len(chunks) > 1:
-                 if hasattr(chunks[-1], 'page_content'): # In ra chunk cuoi cung
-                      print(f"--- Chunk cuoi cung (do dai: {len(chunks[-1].page_content)}) ---") # <-- Them do dai
-                      print(f"Noi dung (500 ky tu dau): {chunks[-1].page_content[:500]}...") # <-- Them ...
-                      print("---------------------")
-                 else:
-                      print("WARNING: Chunk cuoi cung khong co thuoc tinh 'page_content'.") # <-- Them print
-
-            # In ra noi dung 3 chunk ngau nhien (neu co du)
-            if len(chunks) > 3:
-                 print("--- Noi dung 3 chunk ngau nhien ---") # <-- Them print
-                 random_chunks = random.sample(chunks, min(len(chunks), 3)) # Chon ngau nhien, gioi han so luong
-                 for i, chunk in enumerate(random_chunks):
-                      if hasattr(chunk, 'page_content'):
-                           print(f"--- Chunk ngau nhien {i+1} (do dai: {len(chunk.page_content)}) ---") # <-- Them do dai
-                           print(f"Noi dung (500 ky tu dau): {chunk.page_content[:500]}...") # <-- Them ...
-                           print("---------------------")
-                      else:
-                           print(f"WARNING: Chunk ngau nhien {i+1} khong co thuoc tinh 'page_content'.") # <-- Them print
-
-            print("--- KET THUC DEBUG CHUNKING ---") # <-- Them print
-
-
-        return chunks  # Tra ve danh sach chunks (co the rong)
-
-    # <-- SUA CACH BAT NGOAI LE -->
-    except Exception as e:  # Bat bat ky loi nao xay ra trong qua trinh chia chunk
-        print(f"ERROR: Loi khi chia van ban (string) thanh chunk: {e}")  # <-- IN RA LOI CU THE
-        print("split_document_text hoan tat, tra ve None do loi.")  # <-- Them print
-        return None  # Tra ve None neu co loi
-
-
-# --- Ham tao Vector Database va luu tru Embeddings ---
-def store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Chroma | None:
-    print("\n--- Dang tao Vector Database va luu tru Embeddings (store_chunks_in_vector_db) ---")  # <-- Them print
+# --- Ham tao Vector Database va luu tru Embeddings (Manual Add) ---
+def manually_store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Collection | None:
+    print("\n--- Dang tao Vector Database va luu tru Embeddings (manually_store_chunks_in_vector_db) ---")
     if not chunks:
-        print("WARNING: Danh sach chunks dau vao rong. Khong the luu vao Vector DB.")  # <-- Print canh bao
-        print("store_chunks_in_vector_db hoan tat, tra ve None.")  # <-- Them print
-        return None  # Tra ve None neu chunks rong
+        print("WARNING: Danh sach chunks dau vao rong. Khong the luu vao Vector DB.")
+        print("manually_store_chunks_in_vector_db hoan tat, tra ve None.")
+        return None
 
     if embeddings is None:
-        print("ERROR: Embedding Model la None. Khong the luu vao Vector DB.")  # <-- Print loi
-        print("store_chunks_in_vector_db hoan tat, tra ve None.")  # <-- Them print
-        return None  # Tra ve None neu embeddings la None
+        print("ERROR: Embedding Model la None. Khong the luu vao Vector DB.")
+        print("manually_store_chunks_in_vector_db hoan tat, tra ve None.")
+        return None
 
-    # Lay duong dan DB tu Config
-    # Dam bao Config.VECTOR_DB_PATH da duoc set va tro den app/data/chroma_db
     db_directory = Config.VECTOR_DB_PATH
-    print(f"Dang luu tru embeddings vao thu muc: {db_directory}")  # <-- Them print
+    collection_name = "document_collection"
+    print(f"Dang luu tru embeddings vao thu muc: {db_directory} voi collection '{collection_name}'")
 
-    # --- DEBUG: Kiem tra du lieu truoc khi goi Chroma.from_documents ---
-    print("\n--- DEBUG TEST: Du lieu truoc khi goi Chroma.from_documents ---")
-    print(f"So luong chunks: {len(chunks)}")
-    print(f"Kieu cua doi tuong embeddings: {type(embeddings)}")
-    if chunks:
-        print(f"Kieu cua phan tu dau tien trong chunks: {type(chunks[0])}")
-        if hasattr(chunks[0], 'page_content'):
-            print(f"Noi dung cua chunk dau tien (500 ky tu dau): {chunks[0].page_content[:500]}...")
-        if hasattr(chunks[0], 'metadata'):
-            print(f"Metadata cua chunk dau tien: {chunks[0].metadata}")
-    print("--- KET THUC DEBUG TRUOC CHROMA ---")
-    # --- END DEBUG ---
-
+    if not os.path.exists(db_directory):
+        os.makedirs(db_directory)
+        print(f"Da tao thu muc Vector DB: {db_directory}")
 
     try:
-        # Khoi tao Chroma hoac ket noi den Chroma DB neu da ton tai
-        # Su dung persist_directory de chi dinh thu muc luu tru
-        # Su dung embedding_function de chi dinh model embedding
-        # Neu thu muc chua co du lieu, add_documents se them moi
-        # Neu thu muc da co du lieu, Chroma will load len va add_documents se them vao (hoac cap nhat tuy logic)
-        print("Dang goi Chroma.from_documents...")  # <-- Them print
-        vectorstore = Chroma.from_documents(
-            documents=chunks,  # Cac text chunk da chia
-            embedding=embeddings,  # Embedding model de tao vector
-            persist_directory=db_directory  # Duong dan luu tru DB
+        print("Dang khoi tao Chroma client persistent...")
+        client = chromadb.PersistentClient(path=db_directory)
+        print("Da khoi tao Chroma client persistent.")
+
+        print(f"Dang lay hoac tao collection '{collection_name}'...")
+        collection = client.get_or_create_collection(
+            name=collection_name,
         )
-        print(f"Da tao/ket noi VectorStore (Chroma) thanh cong tai {db_directory}.")  # <-- Them print
+        print(f"Da lay hoac tao collection '{collection_name}'.")
 
-        # Day la buoc luu tru embeddings vao dia.
-        # Voi Chroma.from_documents, buoc persist() thuong duoc goi tu dong ben trong.
-        # Tuy nhien, goi ro rang persist() la cach an toan de dam bao du lieu duoc ghi xuong dia.
-        # Kiem tra xem instance vectorstore co phuong thuc persist() khong
-        if hasattr(vectorstore, "persist"):
-            print("Dang luu tru (persist) Vector Database...")  # <-- Them print
-            try:
-                vectorstore.persist()  # Luu tru du lieu vao dia
-                print("Da luu tru (persist) Vector Database thanh cong.")  # <-- Them print
-            # <-- SUA CACH BAT NGOAI LE -->
-            except Exception as e:
-                print(f"ERROR: Loi khi luu tru (persist) Vector Database: {e}")  # <-- IN RA LOI CU THE
-                # Loi persist co the do quyen ghi hoac loi dia
-                print("store_chunks_in_vector_db hoan tat, tra ve None do loi persist.")  # <-- Them print
-                return None  # Tra ve None neu luu tru that bai
+        print("\n--- DEBUG TEST: Thong tin collection truoc khi add ---")
+        print(f"Ten collection: {collection.name}")
+        print(f"So luong items trong collection: {collection.count()}")
+        print("--- KET THUC DEBUG TRUOC ADD ---")
+
+        print(f"\nDang tao embeddings cho {len(chunks)} chunks...")
+        chunk_texts = [chunk.page_content for chunk in chunks]
+        # Tao IDs duy nhat cho tung document, bao gom ca source file
+        chunk_ids = []
+        for i, chunk in enumerate(chunks):
+            source_info = chunk.metadata.get("source_file", "unknown_source").replace("\\", "_").replace("/",
+                                                                                                         "_").replace(
+                ":", "").replace(".", "_")  # Clean filename for ID
+            # Doclingloader có thể trả về page_number trong metadata
+            page_number_info = chunk.metadata.get("page_number", "no_page")
+            chunk_ids.append(f"{source_info}_page_{page_number_info}_chunk_{i}")
+
+        chunk_metadatas = [chunk.metadata for chunk in chunks]
+
+        print(
+            f"Kiem tra chunk_texts: {len(chunk_texts)} items. Kieu item dau tien: {type(chunk_texts[0]) if chunk_texts else 'None'}")
+        if chunk_texts:
+            print(f"Noi dung 500 ky tu dau cua chunk_texts[0]: {chunk_texts[0][:500]}...")
+        print("--- END DEBUG TRUOC EMBEDDING ---")
+
+        start_time = time.time()
+        chunk_embeddings = embeddings.embed_documents(chunk_texts)
+        end_time = time.time()
+        print(f"Da tao embeddings cho {len(chunk_embeddings)} chunks trong {end_time - start_time:.2f} giay.")
+
+        print("\n--- DEBUG TEST: Thong tin embeddings sau khi tao ---")
+        print(f"So luong embeddings tao ra: {len(chunk_embeddings)}")
+        if chunk_embeddings:
+            print(f"Kieu cua phan tu dau tien trong embeddings: {type(chunk_embeddings[0])}")
+            if hasattr(chunk_embeddings[0], '__len__'):
+                print(f"Kich thuoc (dimension) cua embedding dau tien: {len(chunk_embeddings[0])}")
+            else:
+                print("WARNING: Phan tu dau tien cua embeddings khong co thuoc tinh __len__.")
+            print(f"Mot phan gia tri cua embedding dau tien: {chunk_embeddings[0][:10]}...")
         else:
-            print(
-                "WARNING: Instance VectorStore khong co phuong thuc 'persist()'. Du lieu co the da duoc luu tu dong hoac chua duoc luu.")  # <-- Them print
+            print("WARNING: Danh sach embeddings rong.")
+        print("--- KET THUC DEBUG SAU EMBEDDING ---")
 
-        print("store_chunks_in_vector_db hoan tat, tra ve VectorStore.")  # <-- Them print
-        return vectorstore  # Tra ve instance VectorStore vua tao/tai
+        print(f"\nDang them {len(chunks)} chunks va embeddings vao collection '{collection_name}'...")
+        start_time = time.time()
 
-    # <-- SUA CACH BAT NGOAI LE -->
-    except Exception as e:  # Bat bat ky loi nao xay ra trong qua trinh tao VectorStore/luu tru
-        print(f"ERROR: Loi khi tao VectorStore (Chroma) hoac luu tru embeddings: {e}")  # <-- IN RA LOI CU THE
-        print("store_chunks_in_vector_db hoan tat, tra ve None do loi.")  # <-- Them print
-        return None  # Tra ve None neu co loi o buoc nay
+        # Them chunks vao collection
+        collection.add(
+            embeddings=chunk_embeddings,
+            documents=chunk_texts,
+            metadatas=chunk_metadatas,
+            ids=chunk_ids
+        )
+        end_time = time.time()
+        print(f"Da them {len(chunks)} items vao collection trong {end_time - start_time:.2f} giay.")
+
+        print("manually_store_chunks_in_vector_db hoan tat, tra ve Collection.")
+        return collection
+
+    except Exception as e:
+        print(f"ERROR: Loi khi tao VectorStore (Chroma) hoac luu tru embeddings (Manual Add): {e}")
+        print("Kiem tra lai duong dan Vector DB, dinh dang du lieu, va su tuong thich thu vien.")
+        print("manually_store_chunks_in_vector_db hoan tat, tra ve None do loi.")
+        return None
 
 
 # --- Ham pipeline chinh ---
 def process_document_pipeline():
-    print("\n--- Bat dau pipeline xu ly tai lieu ---")  # <-- Them print dau pipeline
+    print("\n--- Bat dau pipeline xu ly tai lieu ---")
 
-    # --- Buoc 0: Kiem tra cac cau hinh can thiet ---
-    print("Dang kiem tra cac cau hinh can thiet...")  # <-- Them print
-    # Dam bao cac cau hinh can thiet ton tai trong config.py
-    # CHUNK_SIZE va CHUNK_OVERLAP can duoc them vao config.py
+    print("Dang kiem tra cac cau hinh can thiet...")
     required_configs = [
-        'DOCUMENT_PATH',
+        'DATA_DIRECTORY',
         'VECTOR_DB_PATH',
-        'SENTENCE_TRANSFORMER_MODEL_NAME', # Giu ten bien nay de tuong thich nguoc
+        'SENTENCE_TRANSFORMER_MODEL_NAME',
         'CHUNK_SIZE',
         'CHUNK_OVERLAP'
-        # Them TESSERACT_PATH vao danh sach kiem tra neu ban muon bat buoc thiet lap
-        # 'TESSERACT_PATH'
     ]
     missing_configs = [cfg for cfg in required_configs if not hasattr(Config, cfg) or getattr(Config, cfg) is None]
 
-    # Kiem tra rieng TESSERACT_PATH neu no khong bat buoc nhung can canh bao
-    if not hasattr(Config, 'TESSERACT_PATH') or not Config.TESSERACT_PATH:
-        print(
-            "WARNING: Config.TESSERACT_PATH khong duoc thiet lap. OCR co the khong hoat dong neu Tesseract khong co trong PATH.")
-
-
     if missing_configs:
-        print("ERROR: Chua dap ung dieu kien tien quyet de chay pipeline xu ly tai lieu.")  # <-- Them print
+        print("ERROR: Chua dap ung dieu kien tien quyet de chay pipeline xu ly tai lieu.")
         print("Cac cau hinh sau dang thieu hoac la None trong config.py:")
         for cfg in missing_configs:
             print(f"- Config.{cfg}")
-        print("Pipeline xu ly tai lieu ket thuc som.")  # <-- Them print
-        return  # Thoat neu thieu config
+        print("Pipeline xu ly tai lieu ket thuc som.")
+        return
 
-    print("Cac cau hinh can thiet da duoc tim thay.")  # <-- Them print
+    print("Cac cau hinh can thiet da duoc tim thay.")
 
+    all_processed_chunks = []  # Danh sach tong hop cac chunk tu tat ca cac file
 
-    # --- Buoc 1.5: Thuc hien OCR de trich xuat van ban tu PDF ---
-    ocr_text = perform_ocr_on_pdf(Config.DOCUMENT_PATH)
-    if ocr_text is None:
-        print("Pipeline xu ly tai lieu ket thuc som do thuc hien OCR that bai.")  # <-- Them print
-        return  # Thoat neu OCR that bai
+    # Quet tat ca cac file trong DATA_DIRECTORY
+    data_dir = Config.DATA_DIRECTORY
+    if not os.path.exists(data_dir):
+        print(f"ERROR: Thu muc du lieu '{data_dir}' khong ton tai.")
+        print("Pipeline xu ly tai lieu ket thuc som.")
+        return
 
-    if not ocr_text or not ocr_text.strip():
-        print("ERROR: Thuc hien OCR thanh cong nhung khong trich xuat duoc van ban nao.")  # <-- Print loi
-        print("Kiem tra lai file PDF hoac cau hinh Tesseract/ngon ngu.")
-        print("Pipeline xu ly tai lieu ket thuc som.")  # <-- Them print
-        return  # Thoat neu OCR khong ra text
+    files_to_process = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
 
+    if not files_to_process:
+        print(f"WARNING: Khong tim thay file nao de xu ly trong thu muc '{data_dir}'.")
+        print("Pipeline xu ly tai lieu ket thuc som.")
+        return
 
-    # --- Buoc 2: Chia van ban da OCR thanh cac chunk nho ---
-    # Truyen van ban da OCR vao ham chia chunk moi
-    print("--- DEBUG TEST: GOI HAM split_document_text() ---") # <-- THEM DONG NAY
-    chunks = split_document_text(ocr_text)  # <-- GOI HAM CHIA CHUNK MOI CHO STRING
+    for file_name in files_to_process:
+        file_path = os.path.join(data_dir, file_name)
+        file_extension = os.path.splitext(file_name)[1].lower()
+        print(f"\n--- Dang xu ly file: {file_name} ---")
 
-    # split_document_text tra ve [] neu dau vao rong, hoac None neu co loi
-    if chunks is None:  # Chi kiem tra None (khi co loi)
-        print("Pipeline xu ly tai lieu ket thuc som do chia chunk that bai.")  # <-- Them print
-        return  # Thoat neu chia chunk that bai
+        # --- Phan chia xu ly dua tren loai file ---
+        documents = []  # Khởi tạo documents ở đây để đảm bảo nó luôn được định nghĩa
+        if file_extension == '.pdf':
+            documents = load_and_process_pdf_with_pytesseract(file_path)
+        else:
+            # Su dung DoclingLoaderFactory cho cac loai file khac
+            try:
+                loader_factory = get_document_loader_factory(file_path)
+                document_loader = loader_factory.create_loader(file_path)
+                print(f"Dang tai tai lieu tu: {file_path} bang docling...")
+                documents = document_loader.load()  # Gán vào biến 'documents'
 
-    if not chunks:  # Kiem tra sau khi chia chunk co tao ra chunk nao khong
-        print("WARNING: Chia chunk hoan tat nhung khong tao ra chunk nao.")  # <-- Print canh bao
-        print("Khong co chunk de luu vao Vector DB. Pipeline ket thuc.")  # <-- Them print
-        return  # Thoat neu khong co chunk nao duoc tao
+                if not documents:
+                    print(f"ERROR: Khong the tai tai lieu '{file_name}' hoac tai lieu rong sau khi load bang docling.")
+                    continue
 
+                print(
+                    f"Da tai tai lieu '{file_name}' thanh cong. Tong so ky tu: {sum(len(doc.page_content) for doc in documents)}")
+
+            except Exception as e:
+                print(f"ERROR: Loi khi tai tai lieu '{file_name}' bang docling: {e}")
+                continue
+
+        if not documents:
+            print(f"ERROR: Khong co tai lieu nao duoc tai tu file '{file_name}'. Khong the chia chunk.")
+            continue
+
+        # --- Su dung Strategy Pattern de chia van ban ---
+        print(f"--- DEBUG TEST: Dang chia chunk cho file: {file_name} ---")
+        chunk_size = Config.CHUNK_SIZE
+        chunk_overlap = Config.CHUNK_OVERLAP
+
+        text_splitter_strategy = None
+        if file_extension in ['.txt', '.docx']:
+            text_splitter_strategy = UnstructuredTextSplitterStrategy()
+        elif file_extension == '.pdf':
+            text_splitter_strategy = StructuredTextSplitterStrategy()
+        else:
+            print(
+                f"WARNING: Khong co chien luoc chia van ban cu the cho dinh dang '{file_extension}'. Su dung chien luoc khong co cau truc.")
+            text_splitter_strategy = UnstructuredTextSplitterStrategy()
+
+        text_splitter_context = TextSplitterContext(text_splitter_strategy)
+
+        # Nối nội dung của tất cả các Document lại thành một chuỗi lớn để chia chunk
+        full_document_content = "\n\n".join([doc.page_content for doc in documents])
+
+        current_file_chunks = text_splitter_context.split_document_text(
+            full_document_content,
+            chunk_size,
+            chunk_overlap
+        )
+
+        # Gan metadata source_file va original_type cho tung chunk con
+        for chunk in current_file_chunks:
+            chunk.metadata["source_file"] = file_name
+            chunk.metadata["original_type"] = file_extension
+            # Nếu là PDF, có thể thêm page_number từ metadata của document gốc
+            if file_extension == '.pdf' and documents:
+                # Cố gắng tìm page_number từ metadata của document gốc tương ứng
+                # Đây là một cách đơn giản, có thể cần phức tạp hơn nếu muốn mapping chính xác từng chunk với page
+                if "page_number" in documents[0].metadata:
+                    chunk.metadata["page_number"] = documents[0].metadata["page_number"]
+
+        if current_file_chunks is None or not current_file_chunks:
+            print(f"WARNING: Chia chunk cho file '{file_name}' hoan tat nhung khong tao ra chunk nào.")
+            continue
+
+        all_processed_chunks.extend(current_file_chunks)
+
+        if current_file_chunks:
+            print(f"\n--- DEBUG TEST: NOI DUNG CUA MOT VAI CHUNK TU FILE {file_name} ---")
+            if hasattr(current_file_chunks[0], 'page_content'):
+                print(f"--- Chunk dau tien (do dai: {len(current_file_chunks[0].page_content)}) ---")
+                print(f"Noi dung (500 ky tu dau): {current_file_chunks[0].page_content[:500]}...")
+                print(f"Metadata: {current_file_chunks[0].metadata}")
+                print("---------------------")
+
+            if len(current_file_chunks) > 1:
+                if hasattr(current_file_chunks[-1], 'page_content'):
+                    print(f"--- Chunk cuoi cung (do dai: {len(current_file_chunks[-1].page_content)}) ---")
+                    print(f"Noi dung (500 ky tu dau): {current_file_chunks[-1].page_content[:500]}...")
+                    print(f"Metadata: {current_file_chunks[-1].metadata}")
+                    print("---------------------")
+
+            if len(current_file_chunks) > 3:
+                print("--- Noi dung 3 chunk ngau nhien ---")
+                random_chunks = random.sample(current_file_chunks, min(len(current_file_chunks), 3))
+                for i, chunk in enumerate(random_chunks):
+                    if hasattr(chunk, 'page_content'):
+                        print(f"--- Chunk ngau nhien {i + 1} (do dai: {len(chunk.page_content)}) ---")
+                        print(f"Noi dung (500 ky tu dau): {chunk.page_content[:500]}...")
+                        print(f"Metadata: {chunk.metadata}")
+                        print("---------------------")
+
+            print(f"--- KET THUC DEBUG CHUNKING CHO FILE {file_name} ---")
+
+    if not all_processed_chunks:
+        print("ERROR: Khong co chunk nao duoc tao tu tat ca cac file da xu ly.")
+        print("Pipeline xu ly tai lieu ket thuc som.")
+        return
 
     # --- Buoc 3: Tao Embedding Model ---
     embeddings = get_embedding_model()
     if embeddings is None:
-        print("Pipeline xu ly tai lieu ket thuc som do lay/khoi tao Embedding Model that bai.")  # <-- Them print
-        return  # Thoat neu lay embedding that bai
+        print("Pipeline xu ly tai lieu ket thuc som do lay/khoi tao Embedding Model that bai.")
+        return
 
-    # --- Buoc 4: Tao Vector Database va luu tru Embeddings ---
-    vectorstore = store_chunks_in_vector_db(chunks, embeddings)
-    if vectorstore is None:
-        print("Pipeline xu ly tai lieu ket thuc som do luu tru vao Vector DB that bai.")  # <-- Them print
-        return  # Thoat neu luu tru that bai
+    # --- Buoc 4: Tao Vector Database va luu tru Embeddings (Manual Add) ---
+    # Luu tru tat ca cac chunk da xu ly vao Vector DB
+    vectorstore_collection = manually_store_chunks_in_vector_db(all_processed_chunks, embeddings)
+    if vectorstore_collection is None:
+        print("Pipeline xu ly tai lieu ket thuc som do luu tru vao Vector DB that bai.")
+        return
 
-    print("\n--- Pipeline xu ly tai lieu hoan tat thanh cong ---")  # <-- Them print cuoi cung
+    print("\n--- Pipeline xu ly tai lieu hoan tat thanh cong ---")
 
-# --- Goi ham pipeline khi script chay truc tiep ---
+
 if __name__ == "__main__":
-    # Dieu kien tien quyet (cac cau hinh can thiet)
-    # Logic kiem tra dieu kien tien quyet da chuyen vao dau ham process_document_pipeline()
-    process_document_pipeline()  # Goi ham pipeline chinh
+    process_document_pipeline()
+

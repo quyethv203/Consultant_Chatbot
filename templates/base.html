@@ -3,37 +3,199 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}ChatBot HUCE{% endblock %}</title>
+    <title>{% block title %}ChatBot HUCE - AI Assistant{% endblock %}</title>
+    
+    <!-- Preconnect to Google Fonts for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Main Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+    
     {% block head %}{% endblock %}
 </head>
 <body>
-<header>
+    <!-- Header with improved navigation -->    <header>
+        <div class="container">
+            <h1><a href="{{ url_for('chat.index') }}" style="color: inherit; text-decoration: none;">ChatBot HUCE</a></h1>            <nav>
+                <ul>
+                    <li><a href="{{ url_for('chat.index') }}" title="Bắt đầu chat ngay"> 💬 Chat</a></li>
+                    
+                    {% if current_user.is_authenticated %}
+                        <li><a href="{{ url_for('chat.chat_history') }}" title="Xem lịch sử chat"> 📚 Lịch sử Chat</a></li>
+                        <li>👋 Xin chào, <strong>{{ current_user.username }}</strong>!</li>
+                        <li><a href="{{ url_for('user.logout') }}" title="Đăng xuất khỏi hệ thống"> 🚪 Đăng xuất</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('chat.chat_history') }}" title="Đăng nhập để xem lịch sử chat"> 📚 Lịch sử Chat</a></li>
+                        <li><a href="{{ url_for('user.login') }}" title="Đăng nhập để lưu lịch sử"> 🔑 Đăng nhập</a></li>
+                        <li><a href="{{ url_for('user.register') }}" title="Tạo tài khoản mới"> ✨ Đăng ký</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </header>
 
-    <h1>ChatBot HUCE</h1>
-    <nav>
-        <ul>
-            {% if not current_user.is_authenticated %}
-            <li><a href="{{ url_for('user.login') }}">Đăng nhập</a></li>
-            <li><a href="{{ url_for('user.register') }}">Đăng ký</a></li>
-            <li><a href="{{ url_for('chat.index') }}">Chat</a></li>
-            {% else %}
-            <li>Xin chào, {{ current_user.username }}</li>
-            <li><a href="{{ url_for('chat.index') }}">Chat</a></li>
-            <li><a href="{{ url_for('user.logout') }}">Đăng xuất</a></li>
-            {% endif %}
-        </ul>
-    </nav>
-</header>
+    <!-- Flash Messages with improved styling -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages" style="max-width: 1200px; margin: 20px auto; padding: 0 20px;">
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">
+                        {% if category == 'success' %}
+                            ✅
+                        {% elif category == 'error' %}
+                            ❌
+                        {% elif category == 'info' %}
+                            ℹ️
+                        {% else %}
+                            📢
+                        {% endif %}
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
 
-<main>
-    {% block content %}{% endblock %}
-</main>
-<footer>
-    <p>&copy; 2025 Zodiac Chatbot. All rights reserved.</p>
-</footer>
-<script src="{{ url_for('static', filename='js/script.js') }}"></script>
-{% block scripts %}{% endblock %}
+    <!-- Main Content Area -->
+    <main>
+        {% block content %}
+        <!-- Default welcome content when no specific content is provided -->
+        <div class="welcome-section">
+            <h2>Chào mừng đến với ChatBot HUCE! 🎓</h2>
+            <p>Trợ lý AI thông minh dành cho sinh viên và giảng viên Đại học Xây dựng Hà Nội. Hỏi đáp, tư vấn và hỗ trợ học tập 24/7.</p>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <span class="feature-icon">🤖</span>
+                <h3>AI Thông Minh</h3>
+                <p>Sử dụng công nghệ RAG tiên tiến để cung cấp câu trả lời chính xác và hữu ích từ cơ sở dữ liệu kiến thức của trường.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">💬</span>
+                <h3>Trò Chuyện Tự Nhiên</h3>
+                <p>Giao tiếp bằng tiếng Việt một cách tự nhiên, chatbot hiểu ngữ cảnh và duy trì cuộc trò chuyện liên tục.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">📚</span>
+                <h3>Kiến Thức Phong Phú</h3>
+                <p>Truy cập thông tin về chương trình đào tạo, thủ tục hành chính, và các hoạt động của trường HUCE.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">⚡</span>
+                <h3>Phản Hồi Nhanh</h3>
+                <p>Nhận câu trả lời tức thì cho mọi thắc mắc, hỗ trợ 24/7 không giới hạn thời gian.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">🔒</span>
+                <h3>Bảo Mật Cao</h3>
+                <p>Đảm bảo an toàn thông tin cá nhân và dữ liệu cuộc trò chuyện của người dùng.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">📱</span>
+                <h3>Đa Thiết Bị</h3>
+                <p>Sử dụng trên mọi thiết bị: máy tính, tablet, điện thoại với giao diện thân thiện.</p>
+            </div>
+        </div>
+
+        <div class="content-wrapper text-center" style="margin-top: 40px;">
+            <h3 style="margin-bottom: 20px; color: var(--text-primary);">Bắt đầu trò chuyện ngay! 🚀</h3>
+            <p style="margin-bottom: 30px; color: var(--text-secondary); font-size: 1.1rem;">
+                Đặt câu hỏi về học tập, thủ tục, hoặc bất cứ điều gì bạn muốn biết về HUCE.
+            </p>
+            <a href="{{ url_for('chat.index') }}" class="btn btn-primary" style="font-size: 1.1rem; padding: 15px 30px;">
+                💬 Bắt đầu Chat ngay
+            </a>
+        </div>
+        {% endblock %}
+    </main>
+
+    <!-- Enhanced Footer -->
+    <footer>
+        <div style="max-width: 1200px; margin: 0 auto; padding: 0 20px;">
+            <p>&copy; 2025 ChatBot HUCE - Đại học Xây dựng Hà Nội. Phát triển bởi sinh viên TKKTPM.</p>
+            <p style="margin-top: 8px; opacity: 0.7; font-size: 0.9rem;">
+                Powered by Advanced RAG Technology 
+            </p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {% block scripts %}{% endblock %}
+    
+    <!-- Add smooth scrolling and loading states -->
+    <script>
+        // Add smooth scrolling to all anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+
+        // Add loading state to buttons when clicked
+        document.querySelectorAll('.btn').forEach(button => {
+            button.addEventListener('click', function() {
+                if (!this.classList.contains('btn-secondary')) {
+                    this.style.opacity = '0.7';
+                    this.style.pointerEvents = 'none';
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<span class="loading"></span> Đang tải...';
+                    
+                    // Reset after 3 seconds (fallback)
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                        this.style.opacity = '1';
+                        this.style.pointerEvents = 'auto';
+                    }, 3000);
+                }
+            });
+        });
+
+        // Add entrance animation for feature cards
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.animation = 'slideInUp 0.6s ease-out forwards';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(30px)';
+            observer.observe(card);
+        });
+
+        // Add slideInUp animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInUp {
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
 </body>
 </html>

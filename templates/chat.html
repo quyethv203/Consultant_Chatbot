@@ -1,30 +1,74 @@
 {% extends "base.html" %}
 
-{% block title %}Chatbot HUCE{% endblock %}
+{% block title %}Chatbot HUCE {% endblock %}
 
 {% block head %}
 {{ super() }}
-
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="container chat-container mt-4">
-    <h2 class="mb-3">Cuộc trò chuyện</h2>
-    <div id="chatbox">
+{% if is_guest is defined and is_guest %}
+<!-- Guest User Notification -->
+<div class="guest-notification">
+    <div class="guest-info">
+        <span class="guest-icon">👤</span>
+        <span class="guest-text">Bạn đang chat với tư cách khách.
+      <a href="{{ url_for('user.login') }}" class="login-link">Đăng nhập</a> để lưu lịch sử chat.
+    </span>
+    </div>
+</div>
+{% endif %}
 
+<div id="chat-container">
+    <!-- Chat Header -->
+    <div class="chat-header">
+        <h1 class="chat-title">🤖 Chatbot HUCE</h1>
+        <div class="chat-controls">
+            <button id="info-button" class="chat-control-btn">Thông tin</button>
+            <button id="reset-button" class="chat-control-btn">Reset AI</button>
+        </div>
+    </div>
+
+    <!-- Chat Messages -->
+    <div id="chatbox">
         {% for message in chat_history %}
-        <div class="message {% if message.sender_type == 'user' %}user-message{% else %}bot-message{% endif %}">
-            {{ message.content }}
-            <span class="timestamp timestamp-raw" data-timestamp="{{ message.timestamp.isoformat() }}"></span>
+        <div class="message-wrapper {{ 'user-message-wrapper' if message.sender_type == 'user' else 'bot-message-wrapper' }}">
+            <div class="message {{ 'user-message' if message.sender_type == 'user' else 'bot-message' }}">
+                {{ message.content | nl2br | markdown_bold | safe }}
+                <span class="timestamp" data-timestamp="{{ message.timestamp.isoformat() }}">
+            <script>
+              document.currentScript.parentNode.textContent = new Intl.DateTimeFormat('vi-VN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZone: 'Asia/Ho_Chi_Minh'
+              }).format(new Date('{{ message.timestamp.isoformat() }}'));
+            </script>
+          </span>
+            </div>
         </div>
         {% endfor %}
     </div>
-    <div id="input-area">
-        <input type="text" name="user_input" id="user-input" placeholder="Nhập tin nhắn của bạn..." required>
+
+    <!-- Chat Input -->
+    <div class="chat-input-area">
+        <input type="text" id="user-input" placeholder="Nhập tin nhắn..." autocomplete="off">
         <button id="send-button">Gửi</button>
+        {% if not (is_guest is defined and is_guest) %}
+        <button id="new-chat-button">Bắt đầu cuộc trò chuyện mới</button>
+        {% endif %}
     </div>
-    <button id="new-chat-button">Bắt đầu cuộc trò chuyện mới</button>
+</div>
+
+<!-- Modal thông tin chatbot -->
+<div id="info-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>🤖 Thông tin Chatbot HUCE</h2>
+        <div id="chatbot-info">
+            <p>Đang tải thông tin...</p>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -36,99 +80,80 @@
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
         const newChatButton = document.getElementById('new-chat-button');
+        const infoButton = document.getElementById('info-button');
+        const resetButton = document.getElementById('reset-button');
+        const infoModal = document.getElementById('info-modal');
+        const closeModal = document.querySelector('.close');
 
+        // Check if user is guest
+        const isGuest = {% if (is_guest is defined and is_guest) %}true{% else %}false{% endif %};
 
-        function formatTime(date) {
-            const hours = date.getHours().toString().padStart(2, '0');
-            const minutes = date.getMinutes().toString().padStart(2, '0');
-            return `${hours}:${minutes}`;
+        // Load chatbot info on page load
+        loadChatbotInfo();
+
+        function formatTime(dateString) {
+            try {
+                const dateObj = new Date(dateString);
+                if (isNaN(dateObj.getTime())) return "Invalid Date";
+                return new Intl.DateTimeFormat('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Asia/Ho_Chi_Minh'
+                }).format(dateObj);
+            } catch (e) {
+                return "Invalid Date";
+            }
         }
 
+        function addMessage(sender, text, timestamp) {
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('message-wrapper');
 
-        function addMessage(sender, text, timestamp = new Date()) {
+            if (sender === 'user') {
+                wrapper.classList.add('user-message-wrapper');
+            } else {
+                wrapper.classList.add('bot-message-wrapper');
+            }
+
             const messageElement = document.createElement('div');
             messageElement.classList.add('message');
+
             if (sender === 'user') {
                 messageElement.classList.add('user-message');
-            } else if (sender === 'bot') {
+            } else {
                 messageElement.classList.add('bot-message');
             }
-            messageElement.textContent = text;
+
+            messageElement.innerHTML = sender === 'bot' ?
+                text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') :
+                text;
 
             const timestampElement = document.createElement('span');
             timestampElement.classList.add('timestamp');
-
-            let displayTime;
-
-
-            if (typeof timestamp === 'string') {
-                displayTime = new Date(timestamp);
-            } else if (timestamp instanceof Date) {
-                displayTime = timestamp;
-            } else {
-                displayTime = new Date();
-            }
-            timestampElement.textContent = formatTime(displayTime);
+            timestampElement.textContent = formatTime(timestamp);
             messageElement.appendChild(timestampElement);
-            chatbox.appendChild(messageElement);
+
+            wrapper.appendChild(messageElement);
+            chatbox.appendChild(wrapper);
             chatbox.scrollTop = chatbox.scrollHeight;
         }
-
-        function formatHistoryTimestamps() {
-            const timestampElements = document.querySelectorAll('.timestamp-raw');
-            timestampElements.forEach(span => {
-                const rawTimestamp = span.dataset.timestamp;
-                try {
-                    const dateObj = new Date(rawTimestamp);
-
-
-                    if (!isNaN(dateObj.getTime())) {
-
-
-                        const timezoneOffsetMillis = 7 * 60 * 60 * 1000;
-
-                        dateObj.setTime(dateObj.getTime() + timezoneOffsetMillis);
-
-
-                        const hours = dateObj.getHours().toString().padStart(2, '0');
-                        const minutes = dateObj.getMinutes().toString().padStart(2, '0');
-                        span.textContent = `${hours}:${minutes}`;
-
-
-                        span.classList.remove('timestamp-raw');
-
-                    } else {
-                        console.error("Invalid timestamp string for history:", rawTimestamp);
-                        span.textContent = "Invalid Date";
-                    }
-                } catch (e) {
-                    console.error("Error processing history timestamp:", rawTimestamp, e);
-                    span.textContent = "Error Date";
-                }
-            });
-
-            chatbox.scrollTop = chatbox.scrollHeight;
-        }
-
 
         async function sendMessage() {
             const messageText = userInput.value.trim();
-            if (messageText === '') {
-                return;
-            }
+            if (!messageText) return;
 
-            addMessage('user', messageText, new Date());
+            const userTimestamp = new Date().toISOString();
+            addMessage('user', messageText, userTimestamp);
             userInput.value = '';
             userInput.disabled = true;
             sendButton.disabled = true;
-            newChatButton.disabled = true;
+            if (newChatButton) newChatButton.disabled = true;
             sendButton.textContent = 'Đang xử lý...';
+
             try {
                 const response = await fetch('{{ url_for("chat.send_message") }}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({user_input: messageText})
                 });
 
@@ -136,36 +161,34 @@
                     const errorData = await response.json().catch(() => ({error: 'Phản hồi lỗi từ máy chủ.'}));
                     const errorMessage = errorData.error || `Lỗi từ máy chủ (Status: ${response.status}).`;
                     console.error('Backend error:', response.status, errorMessage);
-
-                    addMessage('bot', 'Có lỗi xảy ra khi xử lý tin nhắn của bạn: ' + errorMessage, new Date());
-                    if (response.status === 500 && (!errorData || !errorData.error)) {
-                        addMessage('bot', 'Đã xảy ra lỗi server nội bộ. Vui lòng thử lại sau.', new Date());
-                    }
+                    addMessage('bot', 'Có lỗi xảy ra khi xử lý tin nhắn của bạn: ' + errorMessage, new Date().toISOString());
                     return;
                 }
+
                 const data = await response.json();
                 const botResponseText = data.bot_response;
-
-
-                addMessage('bot', botResponseText, new Date());
-
+                const botTimestamp = data.bot_timestamp;
+                addMessage('bot', botResponseText, botTimestamp);
             } catch (error) {
                 console.error('AJAX error:', error);
-
-                addMessage('bot', 'Lỗi kết nối: Không thể gửi tin nhắn.', new Date());
+                addMessage('bot', 'Lỗi kết nối: Không thể gửi tin nhắn.', new Date().toISOString());
             } finally {
                 userInput.disabled = false;
                 sendButton.disabled = false;
-                newChatButton.disabled = false;
+                if (newChatButton) newChatButton.disabled = false;
                 sendButton.textContent = 'Gửi';
                 userInput.focus();
             }
         }
 
         async function startNewSession() {
-            if (!confirm("Bạn có chắc chắn muốn bắt đầu cuộc trò chuyện mới không?")) {
+            if (isGuest) {
+                alert('Bạn cần đăng nhập để tạo phiên chat mới và lưu lịch sử.');
                 return;
             }
+
+            if (!confirm("Bạn có chắc chắn muốn bắt đầu cuộc trò chuyện mới không?")) return;
+
             userInput.disabled = true;
             sendButton.disabled = true;
             newChatButton.disabled = true;
@@ -174,31 +197,17 @@
             try {
                 const response = await fetch('{{ url_for("chat.new_session") }}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({})
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({error: 'Phản hồi lỗi khi tạo phiên mới.'}));
-                    const errorMessage = errorData.error || `Lỗi tạo phiên mới (Status: ${response.status}).`;
-                    console.error('Backend error:', response.status, errorMessage);
-                    alert('Có lỗi xảy ra khi tạo phiên chat mới: ' + errorMessage);
-                    return;
-                }
-
                 const data = await response.json();
-
-                if (data.success) {
-                    console.log('Phiên chat mới đã được tạo:', data.session_id);
+                if (response.ok && data.success) {
                     alert('Phiên chat mới đã được tạo!');
-
-                    chatbox.innerHTML = '';
-
-                    addMessage('bot', 'Xin chào! Tôi là Chatbot Cung Hoàng Đạo. Bạn muốn hỏi gì về 12 cung hoàng đạo?', new Date());
+                    window.location.reload();
                 } else {
-                    alert('Không thể tạo phiên chat mới: ' + (data.error || 'Lỗi không xác định.'));
+                    const errorMessage = data.error || 'Lỗi không xác định.';
+                    alert('Không thể tạo phiên chat mới: ' + errorMessage);
                 }
             } catch (error) {
                 console.error('AJAX error creating new session:', error);
@@ -212,9 +221,7 @@
             }
         }
 
-
-        formatHistoryTimestamps();
-
+        // Event listeners
         sendButton.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', function (event) {
             if (event.key === 'Enter') {
@@ -222,19 +229,109 @@
                 sendMessage();
             }
         });
-        newChatButton.addEventListener('click', startNewSession);
 
+        if (newChatButton) {
+            newChatButton.addEventListener('click', startNewSession);
+        }
 
-        userInput.focus();
+        infoButton.addEventListener('click', showChatbotInfo);
+        resetButton.addEventListener('click', resetConversation);
+        closeModal.addEventListener('click', function () {
+            infoModal.style.display = 'none';
+        });
 
+        window.addEventListener('click', function (event) {
+            if (event.target === infoModal) {
+                infoModal.style.display = 'none';
+            }
+        });
+
+        // Load thông tin chatbot
+        async function loadChatbotInfo() {
+            try {
+                const response = await fetch('{{ url_for("chat.get_chatbot_info") }}');
+                if (response.ok) {
+                    const info = await response.json();
+                    updateChatbotInfoDisplay(info);
+                }
+            } catch (error) {
+                console.error('Error loading chatbot info:', error);
+            }
+        }
+
+        // Hiển thị modal thông tin chatbot
+        async function showChatbotInfo() {
+            try {
+                const response = await fetch('{{ url_for("chat.get_chatbot_info") }}');
+                if (response.ok) {
+                    const info = await response.json();
+                    updateChatbotInfoModal(info);
+                    infoModal.style.display = 'block';
+                } else {
+                    alert('Không thể lấy thông tin chatbot');
+                }
+            } catch (error) {
+                console.error('Error getting chatbot info:', error);
+                alert('Lỗi khi lấy thông tin chatbot');
+            }
+        }
+
+        // Cập nhật nội dung modal
+        function updateChatbotInfoModal(info) {
+            const infoDiv = document.getElementById('chatbot-info');
+            const features = info.features ? info.features.map(f => `<li>${f}</li>`).join('') : '';
+
+            infoDiv.innerHTML = `
+            <div class="chatbot-info-card">
+                <h4>🤖 ${info.type || 'Unknown'}</h4>
+                <p>${info.description || 'Không có mô tả'}</p>
+                ${features ? `<h5>Tính năng:</h5><ul>${features}</ul>` : ''}
+                <div class="status-indicator ${info.type === 'Advanced RAG' ? 'advanced' : 'basic'}">
+                    ${info.type === 'Advanced RAG' ? '🚀 Nâng cao' : '⚡ Cơ bản'}
+                </div>
+            </div>
+        `;
+        }
+
+        // Cập nhật hiển thị trạng thái chatbot
+        function updateChatbotInfoDisplay(info) {
+            console.log('Chatbot Type:', info.type);
+
+            if (info.type === 'Advanced RAG') {
+                document.title = 'Chatbot HUCE - Advanced AI';
+            }
+        }
+
+        // Reset lịch sử hội thoại
+        async function resetConversation() {
+            if (!confirm('Bạn có chắc chắn muốn reset lịch sử hội thoại AI không?\n(Lưu ý: Chỉ reset bộ nhớ AI, không xóa tin nhắn trên giao diện)')) {
+                return;
+            }
+
+            resetButton.disabled = true;
+            resetButton.textContent = '🔄 Đang reset...';
+
+            try {
+                const response = await fetch('{{ url_for("chat.reset_conversation") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    addMessage('bot', '🔄 Đã reset lịch sử hội thoại AI. Tôi sẽ bắt đầu lại từ đầu!', new Date().toISOString());
+                } else {
+                    alert('Không thể reset: ' + (data.message || 'Lỗi không xác định'));
+                }
+            } catch (error) {
+                console.error('Error resetting conversation:', error);
+                alert('Lỗi khi reset lịch sử hội thoại');
+            } finally {
+                resetButton.disabled = false;
+                resetButton.textContent = '🔄 Reset AI';
+            }
+        }
 
     });
-
-
-    function scrollToBottom() {
-        const chatbox = document.getElementById('chatbox');
-        chatbox.scrollTop = chatbox.scrollHeight;
-    }
-
 </script>
 {% endblock %}

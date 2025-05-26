@@ -1,108 +1,88 @@
 # app/services/chatbot_service.py
-import logging
-# logging khong dung nua, su dung print
-# logger = logging.getLogger(__name__) # Co the xoa neu khong dung logger
 
-# Import ham lay RAG Chain tu package rag
-from app.rag.rag_chain import get_rag_chain
-
-# Import Config de doc thong tin chung (nhu GEMINI_API_KEY de check)
-from app.core.config import Config
-
+from app.rag.rag_chain import get_rag_chain # Import ham get_rag_chain
+from app.rag.advanced_rag_chain import get_advanced_rag_chain # Import advanced RAG chain
 
 class ChatbotService:
-    """
-    Service nay dieu phoi viec lay phan hoi cho chatbot.
-    No se su dung RAG chain de tra loi cac cau hoi dua tren tai lieu.
-    RAG Chain duoc khoi tao mot cach luoi bieng (lazy-initialized).
-    """
-    # Khong can Singleton pattern don gian nhu truoc nua voi Flask va manual DI tren controller
-    # Flask se tao instance ChatbotService khi can (qua ChatService instance tren moi request)
-    # Nhung viec khoi tao RAG Chain ben trong moi la critical
-
+    _rag_chain_instance = None # Bien lop de luu tru instance RAG Chain (Singleton)
+    _advanced_rag_instance = None # Advanced RAG Chain instance
+    _use_advanced_rag = True # Flag để chọn sử dụng Advanced RAG
 
     def __init__(self):
-        """
-        Khoi tao ChatbotService. RAG Chain chua duoc tao o buoc nay.
-        """
         print("Khoi tao instance ChatbotService...")
-        self._rag_chain = None # Bien noi bo de luu instance RAG Chain
-        self._rag_chain_initialized = False # Flag de danh dau da tung thu khoi tao chua
+        # RAG Chain se duoc khoi tao lan dau khi get_rag_chain_instance duoc goi
 
-    def _initialize_rag_chain(self):
+    def get_rag_chain_instance(self):
         """
-        Khoi tao RAG Chain neu chua duoc khoi tao truoc do.
+        Tra ve instance RAG Chain. Sử dụng Advanced RAG nếu có thể.
         """
-        # Chi thuc hien logic khoi tao neu chua tung thu truoc do
-        if not self._rag_chain_initialized:
-            print("Dang thu khoi tao RAG Chain lan dau...")
-            try:
-                # Goi ham lay RAG Chain tu file rag_chain.py
-                print("--> Goi get_rag_chain()...")
-                self._rag_chain = get_rag_chain()
-                print("<-- Ket thuc get_rag_chain().")
+        if self._use_advanced_rag:
+            # Thử sử dụng Advanced RAG Chain trước
+            if ChatbotService._advanced_rag_instance is None:
+                print("Dang thu khoi tao Advanced RAG Chain...")
+                ChatbotService._advanced_rag_instance = get_advanced_rag_chain()
+                
+            if ChatbotService._advanced_rag_instance:
+                print("Sử dụng Advanced RAG Chain.")
+                return ChatbotService._advanced_rag_instance
+            else:
+                print("WARNING: Advanced RAG Chain không khả dụng, fallback về Basic RAG.")
+                # Fallback về basic RAG nếu advanced không hoạt động
+                self._use_advanced_rag = False
+        
+        # Sử dụng Basic RAG Chain
+        if ChatbotService._rag_chain_instance is None:
+            print("Dang thu khoi tao Basic RAG Chain...")
+            ChatbotService._rag_chain_instance = get_rag_chain()
+            if ChatbotService._rag_chain_instance:
+                print("Basic RAG Chain da san sanh.")
+            else:
+                print("ERROR: get_rag_chain() tra ve None. RAG Chain khong the khoi tao.")
+                
+        return ChatbotService._rag_chain_instance
 
-                if self._rag_chain:
-                    print("RAG Chain da san sang.")
-                else:
-                    # get_rag_chain da in ERROR chi tiet neu that bai
-                    print("ERROR: get_rag_chain() tra ve None. RAG Chain khong the khoi tao.")
-                    self._rag_chain = None # Dam bao la None
+    def get_chatbot_info(self):
+        """Lấy thông tin về loại chatbot đang sử dụng"""
+        if self._use_advanced_rag and ChatbotService._advanced_rag_instance:
+            return {
+                "type": "Advanced RAG",
+                "features": [
+                    "Query Expansion", 
+                    "Hybrid Search", 
+                    "Conversation Context",
+                    "Response Validation",
+                    "Quality Scoring"
+                ],
+                "description": "Chatbot thông minh với các tính năng nâng cao"
+            }
+        else:
+            return {
+                "type": "Basic RAG", 
+                "features": ["Document Retrieval", "Basic Response Generation"],
+                "description": "Chatbot cơ bản với tính năng truy xuất tài liệu"
+            }
 
-            except Exception as e:
-                # Bat ngoai le xay ra trong qua trinh get_rag_chain()
-                print(f"ERROR: Ngoai le xay ra khi khoi tao RAG Chain: {e}")
-                self._rag_chain = None # Dam bao la None
-            finally:
-                # Danh dau rang da tung thu khoi tao, du thanh cong hay that bai
-                self._rag_chain_initialized = True
-
-
-    # Sua phuong thuc de nhan user_input va goi RAG Chain
-    def get_chatbot_response(self, user_input: str) -> str:
-        """
-        Lay phan hoi tu chatbot su dung RAG chain.
-        """
-        print(f"ChatbotService nhan input: '{user_input}'")
-
-        if not user_input:
-            return "Tôi có thể giúp gì cho bạn?" # Phản hồi cho input rỗng
-
-        # --- Kiem tra va khoi tao RAG Chain mot cach luoi bieng ---
-        # Neu chua tung thu khoi tao truoc do, thi thu ngay bay gio
-        if not self._rag_chain_initialized:
-            print("--> Dang thuc hien _initialize_rag_chain() lan dau khi nhan tin nhan...")
-            self._initialize_rag_chain() # Thuc hien khoi tao
-            print("<-- Ket thuc _initialize_rag_chain().")
-
-
-        # Kiem tra xem RAG Chain da khoi tao thanh cong chua sau khi thu
-        if self._rag_chain is None:
-             print("ERROR: RAG Chain chua san sang (khoi tao that bai). Tra ve phan hoi loi.")
-             # Tra ve thong bao loi tu ChatbotService de Service goi luu vao DB
-             return "Xin lỗi, hệ thống chatbot đang gặp sự cố hoặc chưa sẵn sàng. Vui lòng thử lại sau."
-
-        # --- Goi RAG Chain de lay phan hoi ---
+    def reset_conversation_history(self):
+        """Reset lịch sử hội thoại của Advanced RAG"""
+        if ChatbotService._advanced_rag_instance:
+            ChatbotService._advanced_rag_instance.conversation_history = []
+            print("Đã reset lịch sử hội thoại.")
+    
+    def reset_conversation(self):
+        """Reset conversation and clear memory"""
         try:
-            print(f"Dang goi RAG Chain voi input: '{user_input}'")
-            # self._rag_chain.invoke() thuc thi toan bo quy trinh RAG
-            bot_response_text = self._rag_chain.invoke(user_input)
-            print(f"Nhan phan hoi tu RAG Chain: '{bot_response_text}'")
-
-            if not bot_response_text or bot_response_text.strip() == "":
-                 # Truong hop LLM tra ve chuoi rong hoac chi co khoang trang
-                 # Co the do prompt feedback (bi chan) hoac LLM khong biet tra loi tu context
-                 print("Nhan phan hoi rong hoac chi co khoang trang tu RAG Chain. Tra ve thong bao khong tim thay thong tin.")
-                 # Tra ve thong bao khong tim thay thong tin de Service luu vao DB
-                 return "Tôi không tìm thấy thông tin liên quan trong tài liệu để trả lời câu hỏi này."
-
-            return bot_response_text.strip() # Loai bo khoang trang dau/cuoi
-
+            self.reset_conversation_history()
+            
+            # If using advanced RAG, also reset any additional state
+            if self._use_advanced_rag and ChatbotService._advanced_rag_instance:
+                # Clear any cached queries or context
+                if hasattr(ChatbotService._advanced_rag_instance, 'clear_cache'):
+                    ChatbotService._advanced_rag_instance.clear_cache()
+                    
+            print("Cuộc trò chuyện đã được reset hoàn toàn.")
+            return True
         except Exception as e:
-            # Bat cac ngoai le xay ra trong qua trinh invoke RAG Chain
-            print(f"ERROR: Loi khi goi RAG Chain.invoke(): {e}")
-            # Tra ve thong bao loi chung de Service luu vao DB
-            return "Xin lỗi, đã xảy ra lỗi khi xử lý tin nhắn của bạn."
+            print(f"ERROR: Lỗi khi reset cuộc trò chuyện: {e}")
+            return False
 
 
-# Ham helper de lay VectorStore da tao (dung trong VectorStoreManager) KHONG NAM O DAY

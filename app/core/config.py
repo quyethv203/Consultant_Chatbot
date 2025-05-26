@@ -18,7 +18,7 @@ class Config:
     SESSION_KEY_PREFIX = 'chatbot_session_'
 
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    DOCUMENT_PATH = os.path.join(BASE_DIR, 'data', 'Đại học-ĐHXDHN.pdf')
+    DATA_DIRECTORY = os.environ.get('DATA_DIRECTORY') or 'data'
     VECTOR_DB_PATH = os.path.join(BASE_DIR, 'data', 'chroma_db')
     TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
@@ -26,5 +26,6 @@ class Config:
     GEMINI_MODEL_NAME = 'gemini-2.0-flash'
 
     SENTENCE_TRANSFORMER_MODEL_NAME = 'distiluse-base-multilingual-cased-v2'
-    CHUNK_SIZE = 800  # Kich thuoc cua moi chunk van ban
-    CHUNK_OVERLAP = 200  # So luong ky tu overlap giua cac chunk lien tiep
+    CHUNK_SIZE = 1000
+    CHUNK_OVERLAP = 200
+

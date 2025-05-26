@@ -20,47 +20,34 @@ def login():
     if current_user.is_authenticated:
         logger.info("User already authenticated, redirecting to chat.")
         return redirect(url_for('chat.index'))
-
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-
         if not username or not password:
             flash('Vui lòng nhập tên đăng nhập và mật khẩu.', 'warning')
             return render_template('login.html', username=username)
-
         user_service_instance = None
         try:
             db_session_factory = SessionLocal
             if db_session_factory is None:
                 logger.error("SessionLocal factory is None in user.login.")
                 raise Exception("SessionLocal factory is None.")
-
             repo_instance = SQLAlchemyUserRepository(db_session_factory=db_session_factory)
             user_service_instance = UserService(user_repository=repo_instance, db_session_factory=db_session_factory)
-
             logger.debug(f"login: Manually created UserService instance: {user_service_instance}")
-
         except Exception as e:
-
             logger.error(f"login: Error manually creating dependencies: {e}", exc_info=True)
             flash(f'Lỗi nội bộ khi chuẩn bị chức năng đăng nhập: {e}', 'danger')
             return render_template('login.html', username=username)
-
         if user_service_instance:
             user = user_service_instance.login_user(username, password)
-
             if user:
                 login_user(user)
-
                 logger.info(f"Flask-Login login_user called successfully for user: {user.username}")
-
                 logger.debug(f"Session content after Flask-Login login_user: {session}")
                 logger.debug(f"Session _user_id after Flask-Login login_user: {session.get('_user_id')}")
-
                 flash('Đăng nhập thành công!', 'success')
                 return redirect(url_for('chat.index'))
-
             else:
                 flash('Tên đăng nhập hoặc mật khẩu không đúng.', 'danger')
 
@@ -122,25 +109,19 @@ def register():
                     return redirect(url_for('user.login'))
                 else:
                     flash(message, 'danger')
-
                     logger.info(f"Registration failed for '{username}' ({email}): {message}")
                     return render_template('register.html', username=username, email=email)
-
             except ValueError as e:
                 flash(str(e), 'danger')
-
                 logger.info(f"Registration failed for '{username}' ({email}): {e}")
                 return render_template('register.html', username=username, email=email)
             except Exception as e:
                 flash('Đã xảy ra lỗi không mong muốn trong quá trình đăng ký. Vui lòng thử lại sau.', 'danger')
-
                 logger.error(f"An unexpected error occurred during registration for '{username}' ({email}): {e}",
                              exc_info=True)
                 return render_template('register.html', username=username, email=email)
-
         else:
             pass
-
     return render_template('register.html', username=username, email=email)
 
 
@@ -150,7 +131,6 @@ def logout():
     logger.debug(f"'/logout' accessed for user: {current_user.username}")
     logout_user()
     flash('Bạn đã đăng xuất.', 'info')
-
     logger.info("Flask-Login logout_user called.")
     return redirect(url_for('user.login'))
 

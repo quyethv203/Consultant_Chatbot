@@ -20,9 +20,17 @@ class IChatRepository(ABC):
         pass
 
     @abstractmethod
-    def save_message(self, message: Message) -> None:
+    def save_message(self, session_id: int, sender_type: str, content: str) -> Message:
         pass
 
     @abstractmethod
     def get_messages_by_session_id(self, session_id: int) -> List[Message]:
+        pass
+
+    @abstractmethod
+    def get_all_sessions_by_user_id(self, user_id: int) -> List[ChatSession]:
+        pass
+
+    @abstractmethod
+    def delete_session(self, session_id: int) -> bool:
         pass

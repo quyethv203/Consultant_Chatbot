@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Lịch sử Chat - ChatBot HUCE{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+<style>
+.chat-history-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 40px 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    font-weight: 600;
+}
+
+.page-header p {
+    margin: 10px 0 0;
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.chat-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.new-chat-btn {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    color: white;
+    padding: 12px 25px;
+    text-decoration: none;
+    border-radius: 25px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+}
+
+.new-chat-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+}
+
+.sessions-count {
+    color: #666;
+    font-size: 1rem;
+}
+
+.sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 40px;
+}
+
+.session-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    border: 1px solid #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.session-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    border-color: #007bff;
+}
+
+.session-main-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: 1;
+}
+
+.session-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.session-date {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+    min-width: 120px;
+}
+
+.session-id {
+    font-size: 0.8rem;
+    color: #999;
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-family: monospace;
+    min-width: 80px;
+}
+
+.session-summary {
+    color: #666;
+    font-size: 0.9rem;
+    flex: 1;
+    margin-left: 20px;
+}
+
+.message-count {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.last-message {
+    color: #666;
+    font-style: italic;
+    margin-left: 10px;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.action-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.view-btn {
+    background: #007bff;
+    color: white;
+}
+
+.view-btn:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+}
+
+.delete-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.empty-state h3 {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.empty-state p {
+    margin-bottom: 25px;
+    font-size: 1.1rem;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
+.loading::after {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .session-main-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .session-info {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .session-summary {
+        margin-left: 0;
+    }
+    
+    .chat-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-history-container">
+    <div class="page-header">
+        <h1>📚 Lịch sử Chat</h1>
+        <p>Xem lại tất cả các cuộc trò chuyện của bạn với AI Assistant</p>
+    </div>
+
+    <div class="chat-actions">
+        <div class="sessions-count">
+            {% if chat_sessions %}
+                Tổng cộng: <strong>{{ chat_sessions|length }}</strong> cuộc trò chuyện
+            {% else %}
+                Chưa có cuộc trò chuyện nào
+            {% endif %}
+        </div>
+        <a href="{{ url_for('chat.chat_interface') }}" class="new-chat-btn">
+            💬 Bắt đầu chat mới
+        </a>
+    </div>    {% if chat_sessions %}
+        <div class="sessions-list">
+            {% for session in chat_sessions %}
+            <div class="session-card">
+                <div class="session-main-info">
+                    <div class="session-info">
+                        <div class="session-date">
+                            📅 {{ session.start_time.strftime('%d/%m/%Y %H:%M') if session.start_time else 'Không xác định' }}
+                        </div>
+                    </div>
+                    
+                    <div class="session-summary">
+                        <span class="message-count">💬 {{ session.messages|length if session.messages else 0 }} tin nhắn</span>
+                        {% if session.messages %}
+                            <span class="last-message">
+                                - Tin nhắn cuối: "{{ session.messages[-1].content[:50] }}{% if session.messages[-1].content|length > 50 %}...{% endif %}"
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="session-actions">
+                    <a href="{{ url_for('chat.chat_interface') }}?session_id={{ session.id }}" class="action-btn view-btn">
+                        Xem
+                    </a>
+                    <button class="action-btn delete-btn" onclick="deleteSession('{{ session.id }}')">
+                        Xóa
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <h3>🤖 Chưa có cuộc trò chuyện nào</h3>
+            <p>Bắt đầu cuộc trò chuyện đầu tiên với AI Assistant của chúng tôi!</p>
+            <a href="{{ url_for('chat.chat_interface') }}" class="new-chat-btn">
+                💬 Bắt đầu chat ngay
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function deleteSession(sessionId) {
+    if (confirm('Bạn có chắc chắn muốn xóa cuộc trò chuyện này? Hành động này không thể hoàn tác.')) {
+        // TODO: Implement delete functionality
+        fetch(`/delete_session/${sessionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Không thể xóa cuộc trò chuyện. Vui lòng thử lại.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Có lỗi xảy ra khi xóa cuộc trò chuyện.');
+        });
+    }
+}
+</script>
+{% endblock %}

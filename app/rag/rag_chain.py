@@ -1,36 +1,47 @@
 # app/rag/rag_chain.py
 
 # Import cac component cua LangChain
-from langchain_core.runnables import RunnablePassthrough  # De truyen du lieu qua cac buoc trong chain
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda  # Them RunnableLambda
 from langchain_core.output_parsers import StrOutputParser  # De chuyen output tu LLM thanh chuoi don gian
 # Import ChatGoogleGenerativeAI de su dung model chat cua Gemini
 from langchain_google_genai import ChatGoogleGenerativeAI  # Wrapper cua LangChain cho Gemini Chat
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.documents import Document # Import Document de lam viec voi ket qua retrieve
+from langchain_core.documents import Document  # Import Document de lam viec voi ket qua retrieve
 
 # Import cac component RAG da xay dung
-# <-- DAM BAO IMPORT DUNG VectorStoreManager (khong phai VectorStore) -->
-from app.rag.vector_storage_manager import VectorStoreManager  # De lay VectorStore va thuc hien retrieval
+# <-- DAM BAO IMPORT DUNG VectorStoreManager -->
+from app.rag.vector_storage_manager import VectorStoreManager  # De tai VectorStore va tao retriever
+
+# Import ham get_embedding_model tu document_processor
+from app.rag.document_processor import get_embedding_model
 
 # Import cau hinh
 from app.core.config import Config
 
-# --- Cau hinh Prompt Template cho RAG ---
-# Mau prompt huong dan LLM su dung context da cho de tra loi cau hoi
 PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
     # System message: Dat vai tro cho mo hinh va huong dan cach tra loi
-    ("system", """Ban la mot tro ly AI huu ich chuyen tra loi cac cau hoi ve tai lieu duoc cung cap.
-    Hay tong hop thong tin tu cac doan van ban ngu canh sau de tra loi cau hoi cua nguoi dung.
-    Neu thong tin lien quan khong co trong cac doan duoc cung cap,
-    hay noi mot cach lich su rang ban khong tim thay thong tin do TRONG CAC DOAN DUOC CUNG CAP.
-    Neu ban tim thay thong tin lien quan nhung khong du de tra loi day du, hay cung cap thong tin ban co va noi ro rang no co the khong hoan chinh.
-    KHONG tra loi cau hoi bang kien thuc chung cua ban.
+    ("system", """Bạn là một trợ lý AI hữu ích, chuyên trả lời các câu hỏi dựa trên nội dung từ các đoạn văn bản ngữ cảnh được cung cấp.
+    NGUYÊN TẮC TRẢ LỜI:
+    1. Phân tích kỹ câu hỏi của người dùng để hiểu ý định thực sự
+    2. Tổng hợp thông tin từ nhiều nguồn để đưa ra câu trả lời toàn diện
+    3. Cấu trúc câu trả lời rõ ràng, logic
+    4. Đưa ra ví dụ cụ thể khi cần thiết
+    5. Thừa nhận khi không có đủ thông tin
+    HƯỚNG DẪN TRẢ LỜI:
+    - Nếu thông tin liên quan trực tiếp: Trả lời chi tiết với cấu trúc:
+        * Tóm tắt ngắn gọn
+        * Thông tin chi tiết
+        * Ví dụ/minh họa (nếu có)
+        * Lời khuyên/gợi ý (nếu phù hợp)
+    - Nếu thông tin liên quan gián tiếp: Trả lời những gì biết và gợi ý hướng tìm hiểu thêm
+    - Nếu không có thông tin: Thừa nhận và đề xuất liên hệ phòng ban phù hợp
+
 
     Ngu canh:
-    {context}"""), # Placeholder cho ngu canh (các đoạn văn bản từ Vector DB)
+    {context}"""),  # Placeholder cho ngu canh (các đoạn văn bản từ Vector DB)
 
     # User message: Chua cau hoi goc cua nguoi dung
-    ("user", "{question}"), # Placeholder cho cau hoi cua nguoi dung
+    ("user", "{question}"),  # Placeholder cho cau hoi cua nguoi dung
 ])
 
 
@@ -60,7 +71,8 @@ def get_rag_chain():
     try:
         # Khoi tao Chat Model cua Gemini
         print(f"Dang khoi tao ChatGoogleGenerativeAI voi model: {Config.GEMINI_MODEL_NAME}")  # <-- Them print
-        llm = ChatGoogleGenerativeAI(model=Config.GEMINI_MODEL_NAME, temperature=0.9, google_api_key=Config.GEMINI_API_KEY)
+        llm = ChatGoogleGenerativeAI(model=Config.GEMINI_MODEL_NAME, temperature=0.7,
+                                     google_api_key=Config.GEMINI_API_KEY)
         print(f"Da khoi tao Chat Model '{Config.GEMINI_MODEL_NAME}' thanh cong.")  # <-- Them print
     # <-- SUA CACH BAT NGOAI LE -->
     except Exception as e:  # Bat ngoai le va gan vao bien e
@@ -68,22 +80,34 @@ def get_rag_chain():
         print("Dam bao thu vien google-generativeai da cai dat va GEMINI_API_KEY hop le.")
         return None  # Tra ve None neu khoi tao LLM that bai
 
-    # --- Buoc 2: Lay Retriever tu VectorStoreManager ---
-    print("Dang khoi tao VectorStoreManager va tai VectorStore...")  # <-- Them print
+    # --- Buoc 2: Lay VectorStore Collection va tao Retriever ---
+    print("Dang khoi tao VectorStoreManager va tai VectorStore Collection...")  # <-- Them print
     try:
         # Khoi tao VectorStoreManager (dam bao import dung ten lop)
         vector_store_manager = VectorStoreManager()
-        # Tai VectorStore (neu chua tai). Day la noi xay ra viec load DB tu file.
-        # Phuong thuc load_vector_store() trong VectorStoreManager cung nen co print chi tiet
-        vectorstore = vector_store_manager.load_vector_store()
+        # Tai VectorStore Collection (neu chua tai). Day la noi xay ra viec load DB tu file.
+        vectorstore_collection = vector_store_manager.load_vector_store()
 
-        if vectorstore is None:
+        if vectorstore_collection is None:
             print("ERROR: VectorStoreManager().load_vector_store() tra ve None.")  # <-- Print chi tiet loi
             print("Dam bao da chay script process_document.py va thu muc data/chroma_db ton tai.")
             return None  # Tra ve None neu tai VectorStore that bai
-        # retriever = vectorstore.as_retriever(search_kwargs={"k": 10})  # <-- Lay 5 chunks lien quan nhat
-        retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "fetch_k": 20, "lambda_mult": 0.7})
-        print("Da lay Retriever tu VectorStore thanh cong.")  # <-- Them print
+
+        # Lay Embedding Model (can thiet cho ham retriever thu cong)
+        embeddings = get_embedding_model()
+        if embeddings is None:
+            print("ERROR: Khong the lay Embedding Model cho Retriever.")
+            return None
+
+        # Lay Retriever function tu VectorStoreManager
+        # Ham retriever nay se thuc hien tim kiem trong Chroma Collection
+        retriever_func = vector_store_manager.get_retriever_from_collection(vectorstore_collection, embeddings)
+
+        if retriever_func is None:
+            print("ERROR: Khong thể tạo Retriever function.")
+            return None
+
+        print("Da lay Retriever tu VectorStore Collection thanh cong.")
 
     except Exception as e:  # Bat ngoai le xay ra trong qua trinh load VectorStore/Retriever
         print(f"ERROR: Loi khi tai VectorStore hoac lay Retriever: {e}")  # <-- IN RA THONG TIN LOI CU THE
@@ -93,7 +117,7 @@ def get_rag_chain():
     print("Dang tao Prompt Template...")  # <-- Them print
     try:
         # PROMPT_TEMPLATE da la mot ChatPromptTemplate instance roi
-        rag_prompt = PROMPT_TEMPLATE # Gan truc tiep template da dinh nghia
+        rag_prompt = PROMPT_TEMPLATE  # Gan truc tiep template da dinh nghia
         print("Da tao Prompt Template cho RAG thanh cong.")  # <-- Them print
     except Exception as e:
         print(f"ERROR: Loi khi tao Prompt Template: {e}")  # <-- IN RA THONG TIN LOI CU THE
@@ -102,42 +126,42 @@ def get_rag_chain():
     # --- Buoc 4: Xay dung RAG Chain su dung LangChain Expression Language (LCEL) ---
     print("Dang xay dung RAG Chain...")  # <-- Them print
     try:
-        # Chain nay dam bao 'context' (tu retriever) va 'question' (input goc)
-        # duoc truyen dung vao prompt template.
-
-        # Them buoc in ra context truoc khi truyen vao prompt
-        def log_and_return_context(docs: list[Document]) -> str:
-            """Ham in ra noi dung cac document duoc retrieve va tra ve chuoi ghep noi."""
-            print("\n--- DEBUG TEST: CAC DOCUMENTS DUOC RETRIEVE ---")
+        # Ham format document de dua vao prompt
+        def format_docs(docs: list[Document]) -> str:
+            """Ghep noi dung cac document thanh mot chuoi duy nhat."""
+            print("\n--- DEBUG TEST: CAC DOCUMENTS DUOC FORMAT CHO PROMPT ---")
             context_text = ""
             if not docs:
-                print("WARNING: Retriever tra ve danh sach documents rong.")
+                print("WARNING: Danh sach documents de format rong.")
             else:
                 for i, doc in enumerate(docs):
                     # In ra mot phan noi dung va metadata (neu co)
                     content_preview = doc.page_content[:500] + "..." if doc.page_content else "<TRONG>"
                     metadata_info = doc.metadata if doc.metadata else "Không có metadata"
-                    print(f"--- Document {i+1} ---")
+                    print(f"--- Document {i + 1} (Formatted) ---")
                     print(f"Metadata: {metadata_info}")
                     print(f"Noi dung (500 ky tu dau): {content_preview}")
                     print("---------------------")
-                    context_text += doc.page_content + "\n\n" # Ghep noi dung cac document
-            print("--- KET THUC DEBUG RETRIEVE ---")
-            return context_text # Tra ve chuoi ghep de truyen vao prompt
+                    context_text += doc.page_content + "\n\n"  # Ghep noi dung cac document
+            print("--- KET THUC DEBUG FORMAT ---")
+            return context_text  # Tra ve chuoi ghep de truyen vao prompt
 
-        # Dieu chinh chain de bao gom buoc log_and_return_context
+        # Dieu chinh chain de su dung ham retriever_func thu cong va ham format_docs
         rag_chain = (
-            {"context": retriever | log_and_return_context, "question": RunnablePassthrough()} # Retrieve, log, va format context
-            | rag_prompt # Xay dung prompt voi context va question
-            | llm # Goi LLM
-            | StrOutputParser() # Parse output
+                {
+                    "context": RunnableLambda(lambda x: retriever_func(x["question"])) | format_docs,
+                    "question": RunnablePassthrough()
+                }
+                | rag_prompt  # Xay dung prompt voi context va question
+                | llm  # Goi LLM
+                | StrOutputParser()  # Parse output
         )
 
-        print("Da xay dung RAG Chain thanh cong (bao gom debug retrieval).")  # <-- Them print
+        print("Da xay dung RAG Chain thanh cong (su dung retriever thu cong).")
 
     except Exception as e:
         print(f"ERROR: Loi khi xay dung RAG Chain: {e}")  # <-- IN RA THONG TIN LOI CU THE
         return None
 
-    print("--- Tao RAG Chain hoan tat ---")  # <-- Them print o cuoi ham
+    print("--- Tao RAG Chain hoan tat ---")
     return rag_chain  # <--- Tra ve chain neu tat ca thanh cong

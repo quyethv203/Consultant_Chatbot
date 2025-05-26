@@ -2,9 +2,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, session, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request
 
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_login import LoginManager
 
 from app.core.database import SessionLocal, init_db
 
@@ -105,11 +105,32 @@ def create_app():
 
             return jsonify({"error": "Đã xảy ra lỗi server nội bộ không mong muốn."}), 500
         else:
+            return internal_server_error(e)    # Custom Jinja2 filter to handle newlines
+    @app.template_filter('nl2br')
+    def nl2br_filter(text):
+        """Convert newlines to <br> tags."""
+        if not text:
+            return text
+        # Handle various newline formats
+        text = str(text)
+        text = text.replace('\r\n', '<br>')
+        text = text.replace('\n', '<br>')
+        text = text.replace('\r', '<br>')
+        text = text.replace('\\n', '<br>')
+        return text
 
-            return internal_server_error(e)
+    # Custom Jinja2 filter to handle markdown bold
+    @app.template_filter('markdown_bold')
+    def markdown_bold_filter(text):
+        """Convert **text** to <strong>text</strong>."""
+        if not text:
+            return text
+        import re
+        # Replace **text** with <strong>text</strong>
+        text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
+        return text
 
     logger.info("Kết thúc tạo ứng dụng Flask.")
-
     return app
 
 
