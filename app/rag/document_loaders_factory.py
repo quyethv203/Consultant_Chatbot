@@ -1,15 +1,9 @@
 # app/rag/document_loaders_factory.py
 
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 
 from langchain_docling import DoclingLoader
-from langchain_core.documents import Document
-
-# Không cần import các lớp cấu hình OCR của docling ở đây nữa
-# from docling.document_converter import DocumentConverter, PdfFormatOption
-# from docling.datamodel.base_models import InputFormat
-# from docling.datamodel.pipeline_options import PdfPipelineOptions, TesseractCliOcrOptions
 
 
 class DocumentLoaderFactory(ABC):

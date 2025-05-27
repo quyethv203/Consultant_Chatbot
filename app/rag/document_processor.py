@@ -1,38 +1,26 @@
-# app/rag/document_processor.py
-
-# --- DEBUG TEST: THEM DONG PRINT NAY NGAY DAU FILE ---
-print("--- DEBUG TEST: FILE app/rag/document_processor.py DANG DUOC THUC THI ---")
-# --- END DEBUG TEST ---
-
 import os
 import random
 import re
 import time
 from typing import List
 
-# <-- IMPORT CHROMA CLIENT TRUC TIEP THAY VI LANGCHAIN WRAPPER -->
 import chromadb
 from chromadb.api.models.Collection import Collection
-# Import cac component tu LangChain de xu ly document
+
 from langchain_core.documents import Document
-# Import embedding model
+
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# Import Config de lay duong dan file va ten model, chunk size/overlap
 from app.core.config import Config
-# <-- IMPORT CAC FACTORY VA STRATEGY MOI -->
 from app.rag.document_loaders_factory import get_document_loader_factory
 from app.rag.text_splitting_strategies import TextSplitterContext, StructuredTextSplitterStrategy, \
     UnstructuredTextSplitterStrategy
 
-# Import pytesseract va Pillow
 try:
     import pytesseract
     from PIL import Image
-    import fitz  # PyMuPDF
+    import fitz
 
-    # Cấu hình đường dẫn Tesseract CLI trực tiếp cho pytesseract
-    # Đảm bảo đường dẫn này chính xác trên hệ thống của bạn
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
     PYTESSERACT_AVAILABLE = True
 except ImportError as e:
@@ -63,16 +51,15 @@ def load_and_process_pdf_with_pytesseract(file_path: str) -> List[Document]:
         doc = fitz.open(file_path)
         for i in range(doc.page_count):
             page = doc.load_page(i)
-            # Render trang PDF thanh hinh anh
+
             pix = page.get_pixmap()
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
             print(f"--- Dang OCR trang {i + 1}/{doc.page_count} cua PDF ---")
             try:
-                # Chay OCR tren hinh anh
+
                 text = pytesseract.image_to_string(img, lang='vie', config='--oem 1')
 
-                # Loại bỏ các ký tự không mong muốn và khoảng trắng thừa
                 text = re.sub(r'\s+', ' ', text).strip()
 
                 if text:
@@ -80,7 +67,7 @@ def load_and_process_pdf_with_pytesseract(file_path: str) -> List[Document]:
                         "source_file": os.path.basename(file_path),
                         "original_type": ".pdf",
                         "page_number": i + 1,
-                        "file_path": file_path  # Giữ lại đường dẫn đầy đủ
+                        "file_path": file_path
                     }
                     processed_documents.append(Document(page_content=text, metadata=metadata))
                 else:
@@ -98,7 +85,6 @@ def load_and_process_pdf_with_pytesseract(file_path: str) -> List[Document]:
         return []
 
 
-# --- Ham helper de lay Embedding Model ---
 def get_embedding_model():
     """
     Khoi tao va cau hinh Embedding Model.
@@ -131,7 +117,6 @@ def get_embedding_model():
         return None
 
 
-# --- Ham tao Vector Database va luu tru Embeddings (Manual Add) ---
 def manually_store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Collection | None:
     print("\n--- Dang tao Vector Database va luu tru Embeddings (manually_store_chunks_in_vector_db) ---")
     if not chunks:
@@ -170,13 +155,13 @@ def manually_store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Co
 
         print(f"\nDang tao embeddings cho {len(chunks)} chunks...")
         chunk_texts = [chunk.page_content for chunk in chunks]
-        # Tao IDs duy nhat cho tung document, bao gom ca source file
+
         chunk_ids = []
         for i, chunk in enumerate(chunks):
             source_info = chunk.metadata.get("source_file", "unknown_source").replace("\\", "_").replace("/",
                                                                                                          "_").replace(
-                ":", "").replace(".", "_")  # Clean filename for ID
-            # Doclingloader có thể trả về page_number trong metadata
+                ":", "").replace(".", "_")
+
             page_number_info = chunk.metadata.get("page_number", "no_page")
             chunk_ids.append(f"{source_info}_page_{page_number_info}_chunk_{i}")
 
@@ -209,7 +194,6 @@ def manually_store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Co
         print(f"\nDang them {len(chunks)} chunks va embeddings vao collection '{collection_name}'...")
         start_time = time.time()
 
-        # Them chunks vao collection
         collection.add(
             embeddings=chunk_embeddings,
             documents=chunk_texts,
@@ -229,7 +213,6 @@ def manually_store_chunks_in_vector_db(chunks: list[Document], embeddings) -> Co
         return None
 
 
-# --- Ham pipeline chinh ---
 def process_document_pipeline():
     print("\n--- Bat dau pipeline xu ly tai lieu ---")
 
@@ -253,9 +236,8 @@ def process_document_pipeline():
 
     print("Cac cau hinh can thiet da duoc tim thay.")
 
-    all_processed_chunks = []  # Danh sach tong hop cac chunk tu tat ca cac file
+    all_processed_chunks = []
 
-    # Quet tat ca cac file trong DATA_DIRECTORY
     data_dir = Config.DATA_DIRECTORY
     if not os.path.exists(data_dir):
         print(f"ERROR: Thu muc du lieu '{data_dir}' khong ton tai.")
@@ -274,17 +256,16 @@ def process_document_pipeline():
         file_extension = os.path.splitext(file_name)[1].lower()
         print(f"\n--- Dang xu ly file: {file_name} ---")
 
-        # --- Phan chia xu ly dua tren loai file ---
-        documents = []  # Khởi tạo documents ở đây để đảm bảo nó luôn được định nghĩa
+        documents = []
         if file_extension == '.pdf':
             documents = load_and_process_pdf_with_pytesseract(file_path)
         else:
-            # Su dung DoclingLoaderFactory cho cac loai file khac
+
             try:
                 loader_factory = get_document_loader_factory(file_path)
                 document_loader = loader_factory.create_loader(file_path)
                 print(f"Dang tai tai lieu tu: {file_path} bang docling...")
-                documents = document_loader.load()  # Gán vào biến 'documents'
+                documents = document_loader.load()
 
                 if not documents:
                     print(f"ERROR: Khong the tai tai lieu '{file_name}' hoac tai lieu rong sau khi load bang docling.")
@@ -301,7 +282,6 @@ def process_document_pipeline():
             print(f"ERROR: Khong co tai lieu nao duoc tai tu file '{file_name}'. Khong the chia chunk.")
             continue
 
-        # --- Su dung Strategy Pattern de chia van ban ---
         print(f"--- DEBUG TEST: Dang chia chunk cho file: {file_name} ---")
         chunk_size = Config.CHUNK_SIZE
         chunk_overlap = Config.CHUNK_OVERLAP
@@ -318,7 +298,6 @@ def process_document_pipeline():
 
         text_splitter_context = TextSplitterContext(text_splitter_strategy)
 
-        # Nối nội dung của tất cả các Document lại thành một chuỗi lớn để chia chunk
         full_document_content = "\n\n".join([doc.page_content for doc in documents])
 
         current_file_chunks = text_splitter_context.split_document_text(
@@ -327,14 +306,12 @@ def process_document_pipeline():
             chunk_overlap
         )
 
-        # Gan metadata source_file va original_type cho tung chunk con
         for chunk in current_file_chunks:
             chunk.metadata["source_file"] = file_name
             chunk.metadata["original_type"] = file_extension
-            # Nếu là PDF, có thể thêm page_number từ metadata của document gốc
+
             if file_extension == '.pdf' and documents:
-                # Cố gắng tìm page_number từ metadata của document gốc tương ứng
-                # Đây là một cách đơn giản, có thể cần phức tạp hơn nếu muốn mapping chính xác từng chunk với page
+
                 if "page_number" in documents[0].metadata:
                     chunk.metadata["page_number"] = documents[0].metadata["page_number"]
 
@@ -376,14 +353,11 @@ def process_document_pipeline():
         print("Pipeline xu ly tai lieu ket thuc som.")
         return
 
-    # --- Buoc 3: Tao Embedding Model ---
     embeddings = get_embedding_model()
     if embeddings is None:
         print("Pipeline xu ly tai lieu ket thuc som do lay/khoi tao Embedding Model that bai.")
         return
 
-    # --- Buoc 4: Tao Vector Database va luu tru Embeddings (Manual Add) ---
-    # Luu tru tat ca cac chunk da xu ly vao Vector DB
     vectorstore_collection = manually_store_chunks_in_vector_db(all_processed_chunks, embeddings)
     if vectorstore_collection is None:
         print("Pipeline xu ly tai lieu ket thuc som do luu tru vao Vector DB that bai.")
@@ -394,4 +368,3 @@ def process_document_pipeline():
 
 if __name__ == "__main__":
     process_document_pipeline()
-
